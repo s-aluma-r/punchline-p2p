@@ -1,0 +1,14 @@
+{
+    "V0": [
+	{
+	    "ip": "IP_ADDRESS",
+	    "port": "PORT"
+	}
+    ]
+    "V1": [
+	{
+	    "ip": "IP_ADDRESS",
+	    "port": "PORT"
+	}
+    ]
+}
