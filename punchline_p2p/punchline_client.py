@@ -379,7 +379,7 @@ class PunchlineClient:
                 pkg_origin_address_port = bytes_address_pair[1]
 
                 if pkg_origin_address_port != self._destination_address_port:
-                    raise RuntimeWarning(f"Unexpected sender address/port: {pkg_origin_address_port}")
+                    raise RuntimeWarning(f"WARN: Unexpected sender address/port: {pkg_origin_address_port}")
                 elif self._connected_to_other_client and self._connecting:
                     self._connecting = False
 
@@ -532,7 +532,7 @@ def send_rec_main():
                 if "#send:" in r:
                     # print(time.time())
                     parts = r.split(":")
-                    print(f"Would you like to save file: {parts[1]}? (if no y/n shows up press enter)")
+                    print(f"Would you like to save file: {parts[1]}?")
                     save_file = (input("(y/n): ") == "y")
                     if save_file:
                         print("Recieving file:")
