@@ -403,7 +403,7 @@ class PunchlineClient:
 
 import os
 TARGET_FOLDER = "/tmp/receive/"
-CONNECTION_CODE="IUHC EIUZPZACZAWZDBPA(DZXCZFAW(&AXP(DZPDWPADA)ZSP("
+CONNECTION_CODE = None
 cc = None
 def main():
     global cc
