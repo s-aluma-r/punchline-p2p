@@ -37,6 +37,8 @@ import hashlib
 import requests
 # import base64
 
+# TODO fix spelling recieve -> receive
+
 class PunchlineClient:
     # TODO maybe turn the json parts inneral serial parts and make it possible to change serialisation methods
 
@@ -492,14 +494,17 @@ import sys
 def send_rec_main():
     global cc
     cc = PunchlineClient()
-    print("connecting...")
     if CONNECTION_CODE:
         code = CONNECTION_CODE
     else:
         code = input("Enter connection code: ")
+    print("connecting...")
+    
     cc.connect_async(code.encode(encoding='utf-8'))
+    
     while not cc.is_connected():
         time.sleep(0.01)
+        
     print(f"Connected to: {cc._destination_address_port}")
     
     if len(sys.argv) == 2:
@@ -519,6 +524,8 @@ def send_rec_main():
         else:
             print(f"{path} is not a file")
     else:
+        if not os.path.isdir(TARGET_FOLDER):
+            os.mkdir(TARGET_FOLDER)
         while True:
             r = cc.recieve()
             if r:
