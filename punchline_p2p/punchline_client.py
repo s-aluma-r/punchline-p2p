@@ -124,10 +124,10 @@ class PunchlineClient:
         
     def _get_semi_random_server(self, code):
         """TODO"""
-        return ("127.0.0.1", 12345)
-        # a = ("domain", 12345)
-        # b = (socket.gethostbyname(a[0]), a[1])
-        # return b
+        # return ("127.0.0.1", 12345)
+        a = ("s-aluma-r.de", 12345)
+        b = (socket.gethostbyname(a[0]), a[1])
+        return b
 
     def _hash(self, pkg: bytes):
         hash_object = hashlib.sha256()
@@ -408,11 +408,13 @@ cc = None
 def main():
     global cc
     cc = PunchlineClient()
-    print("connecting...")
+    
     if CONNECTION_CODE:
         code = CONNECTION_CODE
     else:
         code = input("Enter connection code: ")
+
+    print("connecting...")
     cc.connect_async(code.encode(encoding='utf-8'))
     while not cc.is_connected():
         time.sleep(0.01)
