@@ -34,6 +34,7 @@ from enum import IntEnum
 import struct
 import random as r
 import hashlib
+import requests
 # import base64
 
 class PunchlineClient:
@@ -124,10 +125,19 @@ class PunchlineClient:
         
     def _get_semi_random_server(self, code):
         """TODO"""
-        # return ("127.0.0.1", 12345)
-        a = ("s-aluma-r.de", 12345)
-        b = (socket.gethostbyname(a[0]), a[1])
-        return b
+        response = requests.get('https://raw.githubusercontent.com/s-aluma-r/punchline-p2p/refs/heads/main/active_servers.json', timeout=10)  # TODO catch requests.exceptions.Timeout
+        if response.status_code == 200:
+            versions = json.loads(response.content.decode())
+            servers = versions[f"V{self._VERSION}"]
+            rand = r.Random()
+            rand.seed(code)  # TODO is this "safe" to do or can it crash
+            server_pos = r.randint(0, len(servers)-1)
+            server = servers[server_pos]
+            ip = socket.gethostbyname(server["ip"])
+            port = server["port"]
+            return (ip, port)
+        else:
+            return None  # TODO catch this and make it not crash
 
     def _hash(self, pkg: bytes):
         hash_object = hashlib.sha256()
