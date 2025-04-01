@@ -125,8 +125,11 @@ class PunchlineClient:
     def _get_semi_random_server(self, code):
         """TODO"""
         return ("127.0.0.1", 12345)
+        # a = ("domain", 12345)
+        # b = (socket.gethostbyname(a[0]), a[1])
+        # return b
 
-    def _hash(self, pkg:bytes):
+    def _hash(self, pkg: bytes):
         hash_object = hashlib.sha256()
         hash_object.update(pkg)
         return hash_object.digest()
