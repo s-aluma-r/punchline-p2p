@@ -26,6 +26,26 @@ get ack back
 start using psk
 """
 
+"""
+for send/rec queue use:
+
+from queue import Queue
+
+shared_queue = Queue()
+
+def append_to_list(item):
+    shared_queue.put(item)  # Adds item to the queue
+
+def remove_from_list(item):
+    temp_list = list(shared_queue.queue)
+    if item in temp_list:
+        temp_list.remove(item)
+        with shared_queue.mutex:  # Modify queue directly in a thread-safe way
+            shared_queue.queue.clear()
+            shared_queue.queue.extend(temp_list)
+
+"""
+
 import threading
 import socket
 import json
@@ -36,33 +56,22 @@ import random as r
 import hashlib
 import requests
 # import base64
+# from punchline_p2p import Punchline
+from punchline_p2p.punchline import Punchline
 
 # TODO fix spelling recieve -> receive
 
-class PunchlineClient:
+class PunchlineClient(Punchline):
     # TODO maybe turn the json parts inneral serial parts and make it possible to change serialisation methods
 
     # TODO INFO IDEA: maybe have second out queue for faf packages that alternates with normal send queue to allow sending data while large ammount of data is transmitted?
 
-    # constants
-    _VERSION = 0  # 1 byte vanue for version
-    _BUFFER_SIZE = 1024  # not more than 1500
-    _HEADER = "B B I"  # header layout VERSION, TYPE, sequence_id
-    _HEADER_IDX = {"VERSION": 0, "TYPE": 1, "SEQUENCE_ID": 2}
-    _HEADER_SIZE = 0
-    _MAX_PKG_DATA_SIZE = 0
-    _KEEPALIVE_DELAY_S = 1
-    _PKG_CHECK_ACK_DELAY_S = 0.00001
-    _PKG_CHECK_ACK_TIMEOUT_DELAY_S = _KEEPALIVE_DELAY_S/4  # wait a good while before resend (is probably due to bigger issue)
-    _SEND_QUEUE_EMPTY_CHECK_DEALY_S = 0.00001  # bigger than _PKG_CHECK_ACK_DELAY_S ? 
-    _CONNECTION_TIMEOUT_S = 5
-    _MAX_RESEND_TRIES = 10
-
+    # constant
+    _DEDICATED_SERVER = None
+    
     # data
     _stop_all_threads = False
-    _UDP_client_socket = None
     _destination_address_port = None
-    _last_recieved_ack_hash = 0
     _out_pkg_queue = []  # only for packages
     _connected_to_other_client = False
     _connecting = False
@@ -72,34 +81,15 @@ class PunchlineClient:
     _recieve_thread = None
     _send_thread = None
     _code = None
-
-    # statistics
-    stat_resends = 0
-    stat_failed_sends = 0
-    stat_ping = 0
-
-    class _PackageType(IntEnum):
-        KAL = 0  # KeepALive                        | 
-        DAT = 1  # DATa                             |
-        JDT = 2  # Json Data                        | same as data only json
-        FAF = 3  # Fire And Forget                  |
-        JFF = 4  # Json Fire and Forget             | 
-        ACK = 5  # ACKnowladge                      | 
-        # KEY = 6  # KEY code for connect or encrypt  | 
-        CON = 6  # CONnect to                       | this is used between server and client to send code to server and get ip/port of partner client back
-        END = 7  # END connection                   |
-        # TODO PSK --> switch to pre shared key (this needs to have some logic with back and forth to see if change in encryption has worked or not)
+    
 
         # TODO add optional method to replace functions for python -> binary and back (default json but pickle or custom should work too) using function as parameter at init with dults being json ones
 
         #TODO add end package and also timeout feature (if not even keepalive comes)
     
     def __init__(self, PSK:str = None, dedicated_server=None):
-        self._HEADER_SIZE = struct.calcsize(self._HEADER)
-        self._MAX_PKG_DATA_SIZE = self._BUFFER_SIZE-self._HEADER_SIZE
-        self._UDP_client_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-        # start send thread
-        # start recieve thread
+        super().__init__()
+        self._DEDICATED_SERVER = dedicated_server
 
     def connect_async(self, code:bytes):
         # check code size (needs to fit in single data pkg)
@@ -127,6 +117,9 @@ class PunchlineClient:
         
     def _get_semi_random_server(self, code):
         """TODO"""
+        if self._DEDICATED_SERVER:
+            resolved = (socket.gethostbyname(self._DEDICATED_SERVER[0]), self._DEDICATED_SERVER[1])
+            return resolved
         response = requests.get('https://raw.githubusercontent.com/s-aluma-r/punchline-p2p/refs/heads/main/active_servers.json', timeout=10)  # TODO catch requests.exceptions.Timeout
         if response.status_code == 200:
             versions = json.loads(response.content.decode())
@@ -140,26 +133,6 @@ class PunchlineClient:
             return (ip, port)
         else:
             return None  # TODO catch this and make it not crash
-
-    def _hash(self, pkg: bytes):
-        hash_object = hashlib.sha256()
-        hash_object.update(pkg)
-        return hash_object.digest()
-        
-
-    def _create_pkg(self, pkg_type: _PackageType, data: bytes = b'\x00', sequence_id: int = 0):
-        if not (0 <= self._VERSION < 256):
-            raise ValueError("_VERSION must be an unsigned 1-byte integer (0 to 255).")
-        if not (0 <= pkg_type < 256):
-            raise ValueError("pkg_type must be an unsigned 1-byte integer (0 to 255).")
-        if not (0 <= sequence_id <= 4_294_967_295):
-            raise ValueError("sequence_id must be an unsigned 4-byte integer (0 to 4,294,967,295).")
-        if not (0 <= len(data) <= self._MAX_PKG_DATA_SIZE):
-            raise ValueError(f"data must be bytes with max len={self._MAX_PKG_DATA_SIZE}.")
-
-        header = struct.pack(self._HEADER, self._VERSION, pkg_type, sequence_id)
-        
-        return header+data
         
     def _append_data_packages(self, data: bytes, is_json: bool = False):
         if is_json:
@@ -179,46 +152,19 @@ class PunchlineClient:
             # rint(f"<DBG> appending: {s_id=}, {chunk=}")
             self._out_pkg_queue.append(self._create_pkg(pkg_type, data=chunk, sequence_id=s_id))
 
-    def _send_pkg(self, pkg: bytes):
-        header = struct.unpack(self._HEADER, pkg[:self._HEADER_SIZE])
-        pkg_type = header[self._HEADER_IDX["TYPE"]]
-
-        # print(f"<DBG> sending", pkg)
-        
-        self._UDP_client_socket.sendto(pkg, self._destination_address_port)
-
-        if pkg_type not in [self._PackageType.FAF, self._PackageType.JFF, self._PackageType.KAL, self._PackageType.ACK]:
-            pkg_hash = self._hash(pkg)
-            timeout = 0
-            resends = 0
-            while pkg_hash != self._last_recieved_ack_hash and resends < self._MAX_RESEND_TRIES:  # TODO make this function of time instead of max resend tries and maybe end connection if it runs out
-                if timeout >= self._PKG_CHECK_ACK_TIMEOUT_DELAY_S:
-                    self._UDP_client_socket.sendto(pkg, self._destination_address_port)  # resend pkg
-                    timeout = 0
-                    resends += 1
-                    self.stat_resends += 1
-                else:
-                    time.sleep(self._PKG_CHECK_ACK_DELAY_S)
-                    timeout += self._PKG_CHECK_ACK_DELAY_S
-
-            self.stat_ping = (timeout + self._PKG_CHECK_ACK_TIMEOUT_DELAY_S * resends)*1000
-
-            if resends >= self._MAX_RESEND_TRIES:
-                self.stat_failed_sends += 1
-
     def _send_pkg_thread_func(self):
         last_keepalive_time = 0
         while not self._stop_all_threads:
             if len(self._out_pkg_queue) > 0:
                 pkg = self._out_pkg_queue.pop(0)
-                self._send_pkg(pkg)
+                self._send_pkg(pkg, self._destination_address_port)
             else:
                 # check if its time for a keepalive
                 now = time.time()
                 keepalive_delay = now - last_keepalive_time
                 if keepalive_delay > self._KEEPALIVE_DELAY_S:
                     # send keepalive
-                    self._send_pkg(self._create_pkg(self._PackageType.KAL))
+                    self._send_pkg(self._create_pkg(self._PackageType.KAL), self._destination_address_port)
                     last_keepalive_time = now
                 # wait a little
                 time.sleep(self._SEND_QUEUE_EMPTY_CHECK_DEALY_S)
@@ -254,14 +200,8 @@ class PunchlineClient:
             self._append_data_packages(bin_data, is_json=is_json)
         return True
 
-    def _handle_recieve_pkg(self, pkg):
-        header = struct.unpack(self._HEADER, pkg[:self._HEADER_SIZE])
-        data = pkg[self._HEADER_SIZE:]
-        pkg_version = header[self._HEADER_IDX["VERSION"]]
-        if pkg_version != self._VERSION:
-            raise RuntimeError(f"Recieved package version:{pkg_version} != Client version")
-        pkg_type = header[self._HEADER_IDX["TYPE"]]
-        pkg_sequence_id = header[self._HEADER_IDX["SEQUENCE_ID"]]
+    def _handle_recieve_pkg(self, pkg, sender):
+        pkg_version, pkg_type, pkg_sequence_id, data = super()._handle_received_pkg(pkg, sender)
 
         # print(f"REC:{pkg_version=}\t{pkg_type=}\t{pkg_sequence_id}\t{data=}")
 
@@ -276,13 +216,9 @@ class PunchlineClient:
             j = data.decode()
             o = json.loads(j)
             self._in_data_queue.append(o)
-        elif pkg_type == self._PackageType.ACK:
-            # take data and place it into last recieved ack hash
-            self._last_recieved_ack_hash = data
         # ________________________ everything below returns ack _________________________
         elif pkg_type == self._PackageType.DAT:   # TODO duplicated code
             # collect, acknowledge (not with out queue), and if id 0 add to in queue
-            self._send_pkg(self._create_pkg(self._PackageType.ACK, self._hash(pkg)))
 
             if not self._current_data_collection_last_id:  # last transmission was done so start new one
                 self._current_data_collection = [None for i in range(pkg_sequence_id+1)]
@@ -310,7 +246,6 @@ class PunchlineClient:
             
         elif pkg_type == self._PackageType.JDT:  # TODO duplicated code
             # collect, acknowledge (not with out queue), and if id 0 decode and add to in queue
-            self._send_pkg(self._create_pkg(self._PackageType.ACK, self._hash(pkg)))
 
             if not self._current_data_collection_last_id:  # last transmission was done so start new one
                 self._current_data_collection = [None for i in range(pkg_sequence_id+1)]
@@ -342,7 +277,6 @@ class PunchlineClient:
                 
         elif pkg_type == self._PackageType.CON:
             # check if not connected to client, if so connect to this new address
-            self._send_pkg(self._create_pkg(self._PackageType.ACK, self._hash(pkg)))
             if not self._connected_to_other_client:
 
                 ip_binary = data[:4]  # First 4 bytes for IP
@@ -366,24 +300,21 @@ class PunchlineClient:
                 # (feature probably not needed)
 
         elif pkg_type == self._PackageType.END:
-            self._send_pkg(self._create_pkg(self._PackageType.ACK, self._hash(pkg)))
             self.disconnect()
 
     def _recieve_pkg_thread_func(self):
         connection_timeout = 0  # TODO implement this with recvform itself somehow
         while not self._stop_all_threads:
             try:
-                bytes_address_pair = self._UDP_client_socket.recvfrom(self._BUFFER_SIZE)
-
-                pkg = bytes_address_pair[0]
-                pkg_origin_address_port = bytes_address_pair[1]
+                pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
 
                 if pkg_origin_address_port != self._destination_address_port:
                     raise RuntimeWarning(f"WARN: Unexpected sender address/port: {pkg_origin_address_port}")
-                elif self._connected_to_other_client and self._connecting:
-                    self._connecting = False
+                else:
+                    if self._connected_to_other_client and self._connecting:
+                        self._connecting = False
 
-                self._handle_recieve_pkg(pkg)
+                    self._handle_recieve_pkg(pkg, pkg_origin_address_port)
             except RuntimeWarning as w:
                 print(w)
             except Exception as e:
@@ -415,85 +346,85 @@ class PunchlineClient:
 
 import os
 TARGET_FOLDER = "/tmp/receive/"
-CONNECTION_CODE = None
+CONNECTION_CODE = "098714309871340987"
 cc = None
-def main():
-    global cc
-    cc = PunchlineClient()
+# def main():
+#     global cc
+#     cc = PunchlineClient()
     
-    if CONNECTION_CODE:
-        code = CONNECTION_CODE
-    else:
-        code = input("Enter connection code: ")
+#     if CONNECTION_CODE:
+#         code = CONNECTION_CODE
+#     else:
+#         code = input("Enter connection code: ")
 
-    print("connecting...")
-    cc.connect_async(code.encode(encoding='utf-8'))
-    while not cc.is_connected():
-        time.sleep(0.01)
-    print(f"Connected to: {cc._destination_address_port}")
+#     print("connecting...")
+#     cc.connect_async(code.encode(encoding='utf-8'))
+#     while not cc.is_connected():
+#         time.sleep(0.01)
+#     print(f"Connected to: {cc._destination_address_port}")
         
-    def rec_printer():
-        while True:
-            r = cc.recieve()
-            if r:
-                if "#send:" in r:
-                    # print(time.time())
-                    parts = r.split(":")
-                    print(f"Would you like to save file: {parts[1]}? (if no y/n shows up press enter)")
-                    save_file = (input("(y/n): ") == "y")
-                    if save_file:
-                        print("Recieving file:")
-                    else:
-                        print("Ignoring file being sent:")
-                    filename = parts[1]
-                    while True:
-                        data = cc.recieve()
-                        print(f"{cc.get_rec_progress()}          ", end="\r", flush=True)
-                        if data:
-                            break
-                        time.sleep(0.1)
-                    if save_file:
-                        path = TARGET_FOLDER + filename
-                        with open(path, "wb") as file:
-                            file.write(data)
-                        print(f"Recieved file: {parts[1]}")
-                    else:
-                        print(f"Ignored file: {parts[1]}")
-                    # print(time.time())
-                else:
-                    print("RECIEVED MESSAGE: ", r)
-            time.sleep(0.1)
+#     def rec_printer():
+#         while True:
+#             r = cc.recieve()
+#             if r:
+#                 if "#send:" in r:
+#                     # print(time.time())
+#                     parts = r.split(":")
+#                     print(f"Would you like to save file: {parts[1]}? (if no y/n shows up press enter)")
+#                     save_file = (input("(y/n): ") == "y")
+#                     if save_file:
+#                         print("Recieving file:")
+#                     else:
+#                         print("Ignoring file being sent:")
+#                     filename = parts[1]
+#                     while True:
+#                         data = cc.recieve()
+#                         print(f"{cc.get_rec_progress()}          ", end="\r", flush=True)
+#                         if data:
+#                             break
+#                         time.sleep(0.1)
+#                     if save_file:
+#                         path = TARGET_FOLDER + filename
+#                         with open(path, "wb") as file:
+#                             file.write(data)
+#                         print(f"Recieved file: {parts[1]}")
+#                     else:
+#                         print(f"Ignored file: {parts[1]}")
+#                     # print(time.time())
+#                 else:
+#                     print("RECIEVED MESSAGE: ", r)
+#             time.sleep(0.1)
 
-    rec_printer_thread = threading.Thread(target=rec_printer, daemon=True)
-    rec_printer_thread.start()
+#     rec_printer_thread = threading.Thread(target=rec_printer, daemon=True)
+#     rec_printer_thread.start()
 
-    while True:
-        i = input()  # remember this can only take 4kb of input in shell
-        if i != "":
-            if "#send:" in i:
-                parts = i.split(":")
-                print(parts)
-                path = parts[1]
-                if os.path.isfile(path):
-                    with open(path, "rb") as file:
-                        data = file.read()
-                        filename = os.path.basename(path)
-                        cc.send("#send:"+filename)
-                        cc.send(data)
-                    print("waiting for transmit to be over...")
-                    while cc.get_send_progress() > 0:
-                        time.sleep(0.1)
-                        print(f"{cc.get_send_progress()}          ", end="\r", flush=True)
-                    print("Done")
-            else:
-                # print(f"<DBG>: {i}")
-                cc.send(i)
-                print(f"ping: {cc.stat_ping}")
+#     while True:
+#         i = input()  # remember this can only take 4kb of input in shell
+#         if i != "":
+#             if "#send:" in i:
+#                 parts = i.split(":")
+#                 print(parts)
+#                 path = parts[1]
+#                 if os.path.isfile(path):
+#                     with open(path, "rb") as file:
+#                         data = file.read()
+#                         filename = os.path.basename(path)
+#                         cc.send("#send:"+filename)
+#                         cc.send(data)
+#                     print("waiting for transmit to be over...")
+#                     while cc.get_send_progress() > 0:
+#                         time.sleep(0.1)
+#                         print(f"{cc.get_send_progress()}          ", end="\r", flush=True)
+#                     print("Done")
+#             else:
+#                 # print(f"<DBG>: {i}")
+#                 cc.send(i)
+#                 print(f"ping: {cc.stat_ping}")
 
 import sys
 def send_rec_main():
     global cc
-    cc = PunchlineClient()
+    cc = PunchlineClient(dedicated_server=('localhost', 12345))
     if CONNECTION_CODE:
         code = CONNECTION_CODE
     else:
