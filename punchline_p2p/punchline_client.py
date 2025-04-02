@@ -1,24 +1,15 @@
 #!/usr/bin/env python3
+import threading
+import socket
+import json
+import time
+import struct
+import random as r
+import requests
+# import base64
+# from punchline_p2p import Punchline
+from punchline_p2p.punchline import Punchline
 
-"""
-limitations:
-Here’s a breakdown:
-
-    max Ethernet MTU: 1,500 bytes
-
-    Subtract IPv6 header: -40 bytes
-    (IPv4 would only be around 20 but its good to be safe)
-
-    Subtract UDP header: -8 bytes
-
-    Remaining for data: 1,452 bytes
-
-    im using a 6 byte header: 1byte package type, 4 byte count, 1byte salt
-
-    and 1018b data
-
-    so i can use a 1024b buffer for socket (IPv6/4 and udp headers dont apply to this)
-"""
 """
 PSK:
 send PSK package
@@ -46,25 +37,13 @@ def remove_from_list(item):
 
 """
 
-import threading
-import socket
-import json
-import time
-from enum import IntEnum
-import struct
-import random as r
-import hashlib
-import requests
-# import base64
-# from punchline_p2p import Punchline
-from punchline_p2p.punchline import Punchline
 
 # TODO fix spelling recieve -> receive
 
 class PunchlineClient(Punchline):
-    # TODO maybe turn the json parts inneral serial parts and make it possible to change serialisation methods
+    # IDEA maybe turn the json parts inneral serial parts and make it possible to change serialisation methods
 
-    # TODO INFO IDEA: maybe have second out queue for faf packages that alternates with normal send queue to allow sending data while large ammount of data is transmitted?
+    # IDEA: maybe have second out queue for faf packages that alternates with normal send queue to allow sending data while large ammount of data is transmitted?
 
     # constant
     _DEDICATED_SERVER = None
@@ -72,10 +51,10 @@ class PunchlineClient(Punchline):
     # data
     _stop_all_threads = False
     _destination_address_port = None
-    _out_pkg_queue = []  # only for packages
+    _out_pkg_queue = []  # only for packages  # TODO make this a queue
     _connected_to_other_client = False
     _connecting = False
-    _in_data_queue = []  # for user data
+    _in_data_queue = []  # for user data  # TODO make this a queue
     _current_data_collection = None
     _current_data_collection_last_id = None  # has to be none because none triggers fresh start
     _recieve_thread = None
@@ -83,12 +62,10 @@ class PunchlineClient(Punchline):
     _code = None
     
 
-        # TODO add optional method to replace functions for python -> binary and back (default json but pickle or custom should work too) using function as parameter at init with dults being json ones
-
-        #TODO add end package and also timeout feature (if not even keepalive comes)
+        # IDEA add optional method to replace functions for python -> binary and back (default json but pickle or custom should work too) using function as parameter at init with dults being json ones
     
-    def __init__(self, PSK:str = None, dedicated_server=None):
-        super().__init__()
+    def __init__(self, PSK:str = None, dedicated_server=None, debug=False):
+        super().__init__(debug)
         self._DEDICATED_SERVER = dedicated_server
 
     def connect_async(self, code:bytes):
@@ -100,6 +77,7 @@ class PunchlineClient(Punchline):
             return False
 
         self._connecting = True
+        self._timed_out = False
 
         self._destination_address_port = self._get_semi_random_server(code)
 
@@ -116,7 +94,6 @@ class PunchlineClient(Punchline):
         return True
         
     def _get_semi_random_server(self, code):
-        """TODO"""
         if self._DEDICATED_SERVER:
             resolved = (socket.gethostbyname(self._DEDICATED_SERVER[0]), self._DEDICATED_SERVER[1])
             return resolved
@@ -283,19 +260,13 @@ class PunchlineClient(Punchline):
             # check if not connected to client, if so connect to this new address
             if not self._connected_to_other_client:
 
-                ip_binary = data[:4]  # First 4 bytes for IP
-                port_binary = data[4:]  # Last 2 bytes for port
-
-                # Convert back to human-readable formats
-                ip_address = socket.inet_ntoa(ip_binary)  # Binary to IPv4 string
-                port = struct.unpack('!H', port_binary)[0]  # Unpack 2 bytes as big-endian integer
-
-                # Resulting tuple
-                address_port = (ip_address, port)
+                address_port = self._binary_to_address_port(data)
 
                 print("<DBG> updating address to:", address_port)
                 self._destination_address_port = address_port
                 self._connected_to_other_client = True
+
+                # INFO this is in progress due to restructure of server and client
                 # directly send some kind of pkg (maybe empty CON package because its also expected to be acked and therefore repeated) to other client so there is no need to wait for a keepalive?
                 # self._send_pkg(self._create_pkg(self._PackageType.CON))
                 # FIXME this doesnt work for some reason (investigate)
@@ -307,7 +278,7 @@ class PunchlineClient(Punchline):
             self.disconnect()
 
     def _recieve_pkg_thread_func(self):
-        connection_timeout = 0  # TODO implement this with recvform itself somehow
+        # IDEA implement timeout with recvform itself somehow (if no pkg longer than a few times keepalive delay = timeout?)
         while not self._stop_all_threads:
             try:
                 pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
@@ -344,13 +315,16 @@ class PunchlineClient(Punchline):
     def disconnect(self):
         self._out_pkg_queue.append(self._create_pkg(self._PackageType.END))
         self._stop_all_threads = True
+        if self._connecting and not self._connected_to_other_client:
+            raise TimeoutError()
+        self._connecting = False
         self._connected_to_other_client = False
-        # TODO maybe wait for ack if end and only stop after
+        # IDEA maybe wait for ack if end and only stop after
 
 
 import os
 TARGET_FOLDER = "/tmp/receive/"
-CONNECTION_CODE = "098714309871340987"
+CONNECTION_CODE = "BADUM_TZZZ"
 cc = None
 # def main():
 #     global cc
@@ -461,7 +435,7 @@ def send_rec_main():
     else:
         if not os.path.isdir(TARGET_FOLDER):
             os.mkdir(TARGET_FOLDER)
-        while True:
+        while cc.is_connected():
             r = cc.recieve()
             if r:
                 if "#send:" in r:
@@ -504,6 +478,3 @@ if __name__ == "__main__":
         else:
             print()
         raise e
-# TODO maybe instead of _connected_to_other_client have updated_address and connected
-#    updated_address is true after server sends new address
-#    connected to other client is true if recieved first package from other client?
