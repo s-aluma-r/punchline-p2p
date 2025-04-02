@@ -201,7 +201,11 @@ class PunchlineClient(Punchline):
         return True
 
     def _handle_recieve_pkg(self, pkg, sender):
-        pkg_version, pkg_type, pkg_sequence_id, data = super()._handle_received_pkg(pkg, sender)
+        package_parts = super()._handle_received_pkg(pkg, sender)
+        if package_parts:
+            pkg_version, pkg_type, pkg_sequence_id, data = package_parts
+        else:
+            return  # same package was sent twice by mistake
 
         # print(f"REC:{pkg_version=}\t{pkg_type=}\t{pkg_sequence_id}\t{data=}")
 

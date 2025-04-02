@@ -11,8 +11,8 @@ class Punchline(ABC):
     # constants
     _VERSION = 0  # 1 byte vanue for version
     _BUFFER_SIZE = 1024  # not more than 1500
-    _HEADER = "B B I"  # header layout VERSION, TYPE, sequence_id
-    _HEADER_IDX = {"VERSION": 0, "TYPE": 1, "SEQUENCE_ID": 2}
+    _HEADER = ">HBBI"  # header layout VERSION, TYPE, sequence_id
+    _HEADER_IDX = {"VERSION": 0, "TYPE": 1, "ROLLING_ID": 2, "SEQUENCE_ID": 3}
     _HEADER_SIZE = 0
     _MAX_PKG_DATA_SIZE = 0
     _KEEPALIVE_DELAY_S = 1
@@ -26,6 +26,10 @@ class Punchline(ABC):
     _UDP_socket = None
     _ack_hash_list = []
     _ack_hash_list_lock = threading.Lock()
+
+    # there to differentiate single packages with same content sent right after each other from a resend (only needed for dat or jdt with sequence_id=0)
+    _rolling_id = 0  # rotating id (0-256) to make 2 packages with same data different
+    _last_rec_ack_ret_pkg = b''  # last recieved ack return package type
 
     # statistics
     stat_resends = 0
@@ -45,7 +49,7 @@ class Punchline(ABC):
         # TODO PSK --> switch to pre shared key (this needs to have some logic with back and forth to see if change in encryption has worked or not)
 
     # _NO_ACK_PKG_TYPES = [_PackageType.FAF, _PackageType.JFF, _PackageType.KAL, _PackageType.ACK]
-    _ACK_PKG_TYPES = [_PackageType.DAT, _PackageType.JDT, _PackageType.CON, _PackageType.END]
+    _ACK_RET_PKG_TYPES = [_PackageType.DAT, _PackageType.JDT, _PackageType.CON, _PackageType.END]  # ack return package types
 
     def __init__(self):
         self._HEADER_SIZE = struct.calcsize(self._HEADER)
@@ -67,7 +71,8 @@ class Punchline(ABC):
         if not (0 <= len(data) <= self._MAX_PKG_DATA_SIZE):
             raise ValueError(f"data must be bytes with max len={self._MAX_PKG_DATA_SIZE}.")
 
-        header = struct.pack(self._HEADER, self._VERSION, pkg_type, sequence_id)
+        header = struct.pack(self._HEADER, self._VERSION, pkg_type, self._rolling_id, sequence_id)
+        self._rolling_id = (self._rolling_id+1) % 256
 
         return header+data
 
@@ -90,7 +95,7 @@ class Punchline(ABC):
         
         self._UDP_socket.sendto(pkg, destination_address_port)
 
-        if pkg_type in self._ACK_PKG_TYPES:
+        if pkg_type in self._ACK_RET_PKG_TYPES:
             pkg_hash = self._hash(pkg)
             timeout = 0
             resends = 0
@@ -120,7 +125,13 @@ class Punchline(ABC):
 
         if pkg_type == self._PackageType.ACK:
             self._ack_hash_list_append(data)
-        if pkg_type in self._ACK_PKG_TYPES:
+        if pkg_type in self._ACK_RET_PKG_TYPES:
             self._send_pkg(self._create_pkg(self._PackageType.ACK, self._hash(pkg)), sender)
+            
+            if self._last_rec_ack_ret_pkg == pkg:  # resend but already recieved last package
+                return None  # package was sent twice by mistake
+            else:
+                self._last_rec_ack_ret_pkg = pkg
+                
 
         return (pkg_version, pkg_type, pkg_sequence_id, data)
