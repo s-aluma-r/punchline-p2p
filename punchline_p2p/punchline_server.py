@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
 import threading
 import time
 import pandas as pd
+import logging
 from punchline_p2p.punchline import Punchline
 
 class PunchlineServer(Punchline):
@@ -13,8 +13,8 @@ class PunchlineServer(Punchline):
     _clients_lock = threading.Lock()
 
 
-    def __init__(self, port=12345, debug=False):
-        super().__init__(debug)
+    def __init__(self, port=12345, logging_level=logging.INFO):
+        super().__init__(logging_level)
         self._UDP_socket.bind((self._LOCAL_IP, self._LOCAL_PORT))
         self._clients = pd.DataFrame(
             {
@@ -26,13 +26,12 @@ class PunchlineServer(Punchline):
         )
         self._LOCAL_PORT = port
 
-    def _handle_recieve_pkg(self, pkg, sender):
+    def _handle_receive_pkg(self, pkg, sender):
         package_parts = super()._handle_received_pkg(pkg, sender)
         if package_parts:
             pkg_version, pkg_type, pkg_sequence_id, data = package_parts
         else:
-            print("TEST WTH WAS THIS?!")
-            return  # same package was sent twice by mistake
+            return  # same package was sent twice due to ack being lost
 
         if pkg_type == self._PackageType.CON:
             with self._clients_lock:
@@ -41,23 +40,18 @@ class PunchlineServer(Punchline):
                     if not candidates.empty:
                         client = candidates.iloc[0]
                     else:
-                        print("TEST NOONE HERE")
-                        return
-                    if (client['ip'], client['port']) == sender:  # INFO this shouldnt happen (only if client restarts with same code and gets same port so maybe reset entry?)
-                        print("TEST SAAAAAAME")
-                        return
+                        raise Exception("Somehow _clients changed while locked")
+                    if (client['ip'], client['port']) == sender:
+                        return  # same ip , port and punchline tried connecting twice (shouldnt happen)
+
                     self._link(sender, (client['ip'], client['port']), data)
                     self._clients.drop(index=client.name, inplace=True)
                 else:
                     self._clients.loc[len(self._clients)] = [data, sender[0], sender[1], pd.Timestamp.now()]
-                    if self._DEBUG:
-                        print(f"<DBG> NEW_CLIENT: {sender} WITH CODE: {data}")
-                if self._DEBUG:
-                    print(self._clients)
-
-
+                    self._LOGGER.info("<NEW_CLIENT> %s with Punchline: %s", sender, data)
+                    
         elif pkg_type == self._PackageType.KAL:
-            pass # kal could but currently doesnt reset timeout
+            pass  # kal could but currently doesnt reset timeout
 
     def _check_timeout(self):
         # remove all timestamps older than now - n seconds and send them end
@@ -70,13 +64,20 @@ class PunchlineServer(Punchline):
             self._clients.drop(timed_out_clients.index, inplace=True)
 
         for index, row in timed_out_clients.iterrows():
-            self._send_pkg(self._create_pkg(self._PackageType.END), (row['ip'], row['port']))
+            address_port = (row['ip'], row['port'])
+            self._send_pkg(self._create_pkg(self._PackageType.END), address_port)
+            self._LOGGER.info("<TIMEOUT   > %s with Punchline: %s", address_port, row['punchline'])
         time.sleep(1)
     
-        
+
+    def _send_pkg(self, pkg: bytes, destination_address_port):
+        try:
+            super()._send_pkg(pkg, destination_address_port)
+        except TimeoutError:
+            pass  # ignore the timeout probably broke connection
+    
     def _link(self, a, b, punchline):
-        if self._DEBUG:
-            print(f"<DBG> Linking: {a} <--{punchline}--> {b}")
+        self._LOGGER.info("<LINKING   > %s <-- %s --> %s", a, punchline, b)
 
         a_bin = self._address_port_to_binary(a)
         b_bin = self._address_port_to_binary(b)
@@ -85,21 +86,13 @@ class PunchlineServer(Punchline):
         send_b_to_a.start()
         send_a_to_b.start()
 
-    def _recieve_thread(self):
+    def _receive_thread(self):
         while True:
             pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
-            if self._DEBUG:
-                print(f"<DBG> From: {pkg_origin_address_port}, Recieved: {pkg}")
-            self._handle_recieve_pkg(pkg, pkg_origin_address_port)
+            self._handle_receive_pkg(pkg, pkg_origin_address_port)
     
     def run_server(self):
-        self._recieve_thread = threading.Thread(target=self._recieve_thread, daemon=True)
-        self._recieve_thread.start()
+        self._receive_thread = threading.Thread(target=self._receive_thread, daemon=True)
+        self._receive_thread.start()
         while True:
             self._check_timeout()
-
-if __name__ == "__main__":
-    s = PunchlineServer(debug=True)
-    print("Listening")
-    s.run_server()
-    print("Server ended")
