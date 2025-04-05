@@ -26,7 +26,7 @@ class PunchlineServer(Punchline):
         )
         self._LOCAL_PORT = port
 
-    def _handle_receive_pkg(self, pkg, sender):
+    def _handle_received_pkg(self, pkg, sender):
         package_parts = super()._handle_received_pkg(pkg, sender)
         if package_parts:
             pkg_version, pkg_type, pkg_sequence_id, data = package_parts
@@ -95,7 +95,7 @@ class PunchlineServer(Punchline):
     def _receive_thread(self):
         while True:
             pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
-            self._handle_receive_pkg(pkg, pkg_origin_address_port)
+            self._handle_received_pkg(pkg, pkg_origin_address_port)
     
     def run_server(self):
         self._receive_thread = threading.Thread(target=self._receive_thread, daemon=True)

@@ -41,7 +41,7 @@ class Punchline(ABC):
     _MAX_PKG_DATA_SIZE = 0
     _KEEPALIVE_DELAY_S = 1
     _PKG_CHECK_ACK_DELAY_S = 0.00001
-    _PKG_CHECK_ACK_TIMEOUT_DELAY_S = _KEEPALIVE_DELAY_S/4  # wait a good while before resend (is probably due to bigger issue)
+    _PKG_CHECK_ACK_TIMEOUT_DELAY_S = 0.1  # wait a good while before resend (is probably due to bigger issue)
     _SEND_QUEUE_EMPTY_CHECK_DEALY_S = 0.00001  # bigger than _PKG_CHECK_ACK_DELAY_S ? 
     _CONNECTION_TIMEOUT_S = 5
     _MAX_RESEND_TRIES = 10
@@ -184,7 +184,7 @@ class Punchline(ABC):
         self._LOGGER.debug("<RECIEVED> %s --> %d, %d, %d, %d, %.100s", sender, pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data)
 
         if pkg_type == self._PackageType.ACK:
-            self._ack_hash_list_append(data)
+            self._ack_hash_list_append(data)  # no need for mutex/lock because only one thread uses this
         if pkg_type in self._ACK_RET_PKG_TYPES:
             self._send_pkg(self._create_pkg(self._PackageType.ACK, self._hash(pkg)), sender)
             

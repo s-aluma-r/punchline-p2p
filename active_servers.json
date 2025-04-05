@@ -5,10 +5,14 @@
 	    "port": 12345
 	}
     ],
-    "V1": [
+    "V404": [
 	{
-	    "ip": "IP_ADDRESS",
+	    "ip": "s-aluma-r.de",
 	    "port": 12345
+	},
+	{
+	    "ip": "s-aluma-r.de",
+	    "port": 10101
 	}
     ]
 }

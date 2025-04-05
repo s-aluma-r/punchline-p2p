@@ -185,7 +185,7 @@ class PunchlineClient(Punchline):
             return full_data
         return None
 
-    def _handle_receive_pkg(self, pkg, sender):
+    def _handle_received_pkg(self, pkg, sender):
         package_parts = super()._handle_received_pkg(pkg, sender)
         if package_parts:
             pkg_version, pkg_type, pkg_sequence_id, data = package_parts
@@ -250,7 +250,7 @@ class PunchlineClient(Punchline):
                 if self._connected_to_other_client and self._connecting:
                     self._connecting = False
 
-                self._handle_receive_pkg(pkg, pkg_origin_address_port)
+                self._handle_received_pkg(pkg, pkg_origin_address_port)
 
     def _end_connection(self):
         self._stop_all_threads = True
