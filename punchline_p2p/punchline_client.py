@@ -157,6 +157,34 @@ class PunchlineClient(Punchline):
             self._append_data_packages(bin_data, is_json=is_json)
         return True
 
+    def _collect_multi_package_data(self, data, pkg_sequence_id):
+         # collect, acknowledge (not with out queue), and if id 0 add to in queue
+
+        if not self._current_data_collection_last_id:  # last transmission was done so start new one
+            self._current_data_collection = [None for i in range(pkg_sequence_id+1)]
+            self._current_data_collection_last_id = pkg_sequence_id
+
+        if pkg_sequence_id <= self._current_data_collection_last_id:  # data continues so place in right spot or rewrite spot
+            self._current_data_collection[pkg_sequence_id] = data
+            self._current_data_collection_last_id = pkg_sequence_id
+        else:  # new start of data so reset everything (should only happen in error case?)
+            self._current_data_collection = [None for i in range(pkg_sequence_id+1)]
+            self._current_data_collection[pkg_sequence_id] = data
+            self._current_data_collection_last_id = pkg_sequence_id
+
+        if pkg_sequence_id == 0:
+            # assemble collected data packages
+            # print("<DBG> ASSEMBLING DATA")
+            full_data = b''.join(self._current_data_collection[::-1])
+            # full_data = b''
+            # for chunk in self._current_data_collection[::-1]:  # opposite way because highest sequence id comes first
+            #     full_data += chunk
+            # print("<DBG> ASSEMBLED")
+            self._current_data_collection = None
+            pkg_sequence_id = None  # set end of transmission
+            return full_data
+        return None
+
     def _handle_receive_pkg(self, pkg, sender):
         package_parts = super()._handle_received_pkg(pkg, sender)
         if package_parts:
@@ -178,63 +206,19 @@ class PunchlineClient(Punchline):
             o = json.loads(j)
             self._in_data_queue.put(o)
         # ________________________ everything below returns ack _________________________
-        elif pkg_type == self._PackageType.DAT:   # TODO duplicated code
-            # collect, acknowledge (not with out queue), and if id 0 add to in queue
-
-            if not self._current_data_collection_last_id:  # last transmission was done so start new one
-                self._current_data_collection = [None for i in range(pkg_sequence_id+1)]
-                self._current_data_collection_last_id = pkg_sequence_id
+        elif pkg_type == self._PackageType.DAT:
+           full_data = self._collect_multi_package_data(data, pkg_sequence_id)
+           if full_data:
+               self._in_data_queue.put(full_data)
             
-            if pkg_sequence_id <= self._current_data_collection_last_id:  # data continues so place in right spot or rewrite spot
-                self._current_data_collection[pkg_sequence_id] = data
-                self._current_data_collection_last_id = pkg_sequence_id
-            else:  # new start of data so reset everything (should only happen in error case?)
-                self._current_data_collection = [None for i in range(pkg_sequence_id+1)]
-                self._current_data_collection[pkg_sequence_id] = data
-                self._current_data_collection_last_id = pkg_sequence_id
-                    
-            if pkg_sequence_id == 0:
-                # assemble collected data packages
-                # print("<DBG> ASSEMBLING DATA")
-                full_data = b''.join(self._current_data_collection[::-1])
-                # full_data = b''
-                # for chunk in self._current_data_collection[::-1]:  # opposite way because highest sequence id comes first
-                #     full_data += chunk
-                # print("<DBG> ASSEMBLED")
-                self._current_data_collection = None
-                self._in_data_queue.put(full_data)
-                pkg_sequence_id = None  # set end of transmission
-            
-        elif pkg_type == self._PackageType.JDT:  # TODO duplicated code
-            # collect, acknowledge (not with out queue), and if id 0 decode and add to in queue
-
-            if not self._current_data_collection_last_id:  # last transmission was done so start new one
-                self._current_data_collection = [None for i in range(pkg_sequence_id+1)]
-                self._current_data_collection_last_id = pkg_sequence_id
-            
-            if pkg_sequence_id <= self._current_data_collection_last_id:  # data continues so place in right spot or rewrite spot
-                self._current_data_collection[pkg_sequence_id] = data
-                self._current_data_collection_last_id = pkg_sequence_id
-            else:  # new start of data so reset everything (should only happen in error case?)
-                self._current_data_collection = [None for i in range(pkg_sequence_id+1)]
-                self._current_data_collection[pkg_sequence_id] = data
-                self._current_data_collection_last_id = pkg_sequence_id
-                
-            if pkg_sequence_id == 0:
-                # assemble collected data packages
-                full_data = b''
-                # print("<DBG> ASSEMBLING")
-                for chunk in self._current_data_collection[::-1]:
-                    # print(f"<DBG> {chunk}", end="+", flush=True)
-                    full_data += chunk
-                # print()
-                self._current_data_collection = None
-                j = full_data.decode()  # INFO only difference
+        elif pkg_type == self._PackageType.JDT:
+            full_data = self._collect_multi_package_data(data, pkg_sequence_id)
+            if full_data:
+                j = full_data.decode()
                 # print("<DBG> RESULT JSON:", j)
-                o = json.loads(j)  # INFO only difference
+                o = json.loads(j)
                 # print("<DBG> RESULT:", o)
-                self._in_data_queue.put(o)  # INFO only difference
-                pkg_sequence_id = None  # set end of transmission
+                self._in_data_queue.put(o)
                 
         elif pkg_type == self._PackageType.CON:
             # check if not connected to client, if so connect to this new address
@@ -256,28 +240,25 @@ class PunchlineClient(Punchline):
     def _receive_pkg_thread_func(self):
         # IDEA implement timeout with recvform itself somehow (if no pkg longer than a few times keepalive delay = timeout?)
         while not self._stop_all_threads:
-            try:
-                pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
 
-                if pkg_origin_address_port != self._destination_address_port:
-                    self._LOGGER.warning("<Unexpected sender address/port> %s", pkg_origin_address_port)
-                    raise RuntimeWarning(f"WARN: Unexpected sender address/port: {pkg_origin_address_port}")
-                else:
-                    if self._connected_to_other_client and self._connecting:
-                        self._connecting = False
+            pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
 
-                    self._handle_receive_pkg(pkg, pkg_origin_address_port)
-            except Exception as e:
-                raise e
-                # TODO END CONNECTION SOMETHING WENT WRONG (probably only receiving connection errors)
+            if pkg_origin_address_port != self._destination_address_port:
+                self._LOGGER.warning("<Unexpected sender address/port> %s", pkg_origin_address_port)
+                raise RuntimeWarning(f"WARN: Unexpected sender address/port: {pkg_origin_address_port}")  # might need to uncomment this
+            else:
+                if self._connected_to_other_client and self._connecting:
+                    self._connecting = False
 
-                #
+                self._handle_receive_pkg(pkg, pkg_origin_address_port)
+
     def _end_connection(self):
         self._stop_all_threads = True
         if self._connecting and not self._connected_to_other_client:
             raise TimeoutError()
         self._connecting = False
         self._connected_to_other_client = False
+        self._LOGGER.info("<ENDED_CONNECTION>")
 
     def receive(self):
         if self._in_data_queue.empty():

@@ -49,7 +49,13 @@ class PunchlineServer(Punchline):
                 else:
                     self._clients.loc[len(self._clients)] = [data, sender[0], sender[1], pd.Timestamp.now()]
                     self._LOGGER.info("<NEW_CLIENT> %s with Punchline: %s", sender, data)
-                    
+
+        elif pkg_type == self._PackageType.END:
+            with self._clients_lock:
+                connection = self._clients[(self._clients['ip'] == sender[0]) & (self._clients['port'] == sender[1])]
+                if not connection.empty:
+                    self._LOGGER.info("<CANCEL    > %s", sender)
+                    self._clients.drop(connection.index, inplace=True)
         elif pkg_type == self._PackageType.KAL:
             pass  # kal could but currently doesnt reset timeout
 

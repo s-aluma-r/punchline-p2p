@@ -66,7 +66,7 @@ class Punchline(ABC):
         FAF = 3  # Fire And Forget                  |
         JFF = 4  # Json Fire and Forget             |
         ACK = 5  # ACKnowladge                      |
-        # KEY = 6  # KEY code for connect or encrypt|
+
         CON = 6  # CONnect to                       | this is used between server and client to send code to server and get ip/port of partner client back
         END = 7  # END connection                   |
         # TODO PSK --> switch to pre shared key (this needs to have some logic with back and forth to see if change in encryption has worked or not)
@@ -112,8 +112,8 @@ class Punchline(ABC):
         return address_port
     
     def _create_pkg(self, pkg_type: _PackageType, data: bytes = b'\x00', sequence_id: int = 0):
-        if not (0 <= self._VERSION < 256):
-            raise ValueError("_VERSION must be an unsigned 1-byte integer (0 to 255).")
+        if not (0 <= self._VERSION < 65_535):
+            raise ValueError("_VERSION must be an unsigned 1-byte integer (0 to 65,535).")
         if not (0 <= pkg_type < 256):
             raise ValueError("pkg_type must be an unsigned 1-byte integer (0 to 255).")
         if not (0 <= sequence_id <= 4_294_967_295):
@@ -155,6 +155,7 @@ class Punchline(ABC):
         split_pkg = self._unpack_pkg(pkg, get_only_type=not self._LOGGER.isEnabledFor(logging.DEBUG))
         pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data = split_pkg
 
+        self._LOGGER.debug("<SENDING > %s --> %d, %d, %d, %d, %.100s", destination_address_port, pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data)
         self._UDP_socket.sendto(pkg, destination_address_port)
 
         resends = 0
@@ -175,12 +176,12 @@ class Punchline(ABC):
 
             if resends >= self._MAX_RESEND_TRIES:
                 raise TimeoutError(f"{self._MAX_RESEND_TRIES=} reached")
-        self._LOGGER.debug("<SENT> %s -%d-> %d, %d, %d, %d, %s", destination_address_port, resends+1, pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data)
+        self._LOGGER.debug("<SENT    > %s -%d-> %d, %d, %d, %d, %.100s", destination_address_port, resends+1, pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data)
 
     def _handle_received_pkg(self, pkg, sender):
         pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data = self._unpack_pkg(pkg)
 
-        self._LOGGER.debug("<RECIEVED> %s --> %d, %d, %d, %d, %s", sender, pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data)
+        self._LOGGER.debug("<RECIEVED> %s --> %d, %d, %d, %d, %.100s", sender, pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data)
 
         if pkg_type == self._PackageType.ACK:
             self._ack_hash_list_append(data)
