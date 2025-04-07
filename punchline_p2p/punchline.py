@@ -43,8 +43,8 @@ class Punchline(ABC):
     _PKG_CHECK_ACK_DELAY_S = 0.00001
     _PKG_CHECK_ACK_TIMEOUT_DELAY_S = 0.1  # wait a good while before resend (is probably due to bigger issue)
     _SEND_QUEUE_EMPTY_CHECK_DEALY_S = 0.00001  # bigger than _PKG_CHECK_ACK_DELAY_S ? 
-    _CONNECTION_TIMEOUT_S = 5
-    _MAX_RESEND_TRIES = 10
+    _CONNECTION_TIMEOUT_S = 5  # unused but for recvfrom timeout in future
+    _MAX_RESEND_TRIES = 5
 
     # data
     _UDP_socket = None

@@ -9,12 +9,19 @@ class VerifyActiveServers(Punchline):
         super().__init__(logging_level)
         self._UDP_socket.settimeout(2)
 
+    def _send_pkg_no_timeout_error(self, pkg, address_port):
+        try:
+            self._send_pkg(pkg, address_port)
+        except TimeoutError:
+            pass
+        
     def verify(self, servers):
-        new_servers = servers
+        new_server_list = {}
         for version in servers:
+            new_server_list[version] = []
             for i, server in enumerate(servers[version]):
                 timeout=False
-                send_thread = threading.Thread(target=self._send_pkg, args=(self._create_pkg(self._PackageType.DAT), (server['ip'], server['port'])), daemon=True)
+                send_thread = threading.Thread(target=self._send_pkg_no_timeout_error, args=(self._create_pkg(self._PackageType.DAT), (server['ip'], server['port'])), daemon=True)
                 send_thread.start()
                 # TODO catch send thread timeout exception for cleaner output
                 try:
@@ -26,17 +33,21 @@ class VerifyActiveServers(Punchline):
 
                 if timeout:
                     print(f"{server}, timed out --> deleting")
-                    del new_servers[version][i]
                     continue
                 
-                info = f"{server} marked as {version}, is V{pkg_version}"
-                if "V"+str(pkg_version) == version:
+                info = f"{server} marked as {version}, is V{pkg_version} --> "
+                pkg_ver_str = "V"+str(pkg_version)
+                if  pkg_ver_str == version:
                     print(info, "correct")
+                    new_server_list[version].append(server)
                 else:
                     print(info, "wrong --> placing server in right version group")
-                    # TODO place server in right version bracket
+                    if server not in new_server_list[pkg_ver_str]:
+                        new_server_list[pkg_ver_str].append(server)
+            if len(new_server_list[version]) == 0:
+                del new_server_list[version]
                 
-        return new_servers
+        return new_server_list
 
 if __name__ == "__main__":
     with open('../active_servers.json', 'r') as f:
@@ -44,6 +55,6 @@ if __name__ == "__main__":
         vas = VerifyActiveServers()
         new_servers = vas.verify(servers)
         new_servers_json = json.dumps(new_servers, indent=4)
-        print("#################################### Copy the following txt to active_servers.json ############################################")
+        print("#################################### Copy the following txt to ../active_servers.json ############################################")
         print(new_servers_json)
         print("###############################################################################################################################")

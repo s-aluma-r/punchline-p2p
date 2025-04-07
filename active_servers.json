@@ -1,18 +1,8 @@
 {
     "V0": [
-	{
-	    "ip": "s-aluma-r.de",
-	    "port": 12345
-	}
-    ],
-    "V404": [
-	{
-	    "ip": "s-aluma-r.de",
-	    "port": 12345
-	},
-	{
-	    "ip": "s-aluma-r.de",
-	    "port": 10101
-	}
+        {
+            "ip": "s-aluma-r.de",
+            "port": 12345
+        }
     ]
 }
