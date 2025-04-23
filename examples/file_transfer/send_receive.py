@@ -15,7 +15,7 @@ def send_rec_main():
     else:
         print("Receiving mode. (for sending mode call ./send_receive.py [path to file])") 
         
-    pc = PunchlineClient(logging_level=logging.DEBUG)
+    pc = PunchlineClient(logging_level=logging.INFO)
     # pc = PunchlineClient(dedicated_server=('localhost', 12345))  # to test locally with own server
     if CONNECTION_PUNCHLINE:
         code = CONNECTION_PUNCHLINE

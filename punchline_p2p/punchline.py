@@ -52,6 +52,7 @@ class Punchline(ABC):
     _UDP_socket = None
     _ack_hash_list = []
     _ack_hash_list_lock = threading.Lock()
+    _cancel_send_pkg=False
 
     # there to differentiate single packages with same content sent right after each other from a resend (only needed for dat or jdt with sequence_id=0)
     _rolling_id = 0  # rotating id (0-256) to make 2 packages with same data different
@@ -157,10 +158,12 @@ class Punchline(ABC):
         self._UDP_socket.sendto(pkg, destination_address_port)
 
         resends = 0
+        self._cancel_send_pkg=False
         if pkg_type in self._ACK_RET_PKG_TYPES:
             pkg_hash = self._hash(pkg)
             timeout = 0
-            while not self._ack_hash_list_check_remove(pkg_hash) and resends < self._MAX_RESEND_TRIES:  # TODO make this function of time instead of max resend tries and maybe end connection if it runs out
+            while not self._cancel_send_pkg and not self._ack_hash_list_check_remove(pkg_hash) and resends < self._MAX_RESEND_TRIES:
+                # TODO make this function of time instead of max resend tries and maybe end connection if it runs out
                 if timeout >= self._PKG_CHECK_ACK_TIMEOUT_DELAY_S:
                     self._UDP_socket.sendto(pkg, destination_address_port)  # resend pkg
                     timeout = 0

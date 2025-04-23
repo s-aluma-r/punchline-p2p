@@ -263,7 +263,6 @@ class PunchlineClient(Punchline):
 
             if pkg_origin_address_port != self._destination_address_port:
                 self._LOGGER.warning("<Unexpected sender address/port> %s (IGNORING)", pkg_origin_address_port)
-                # raise RuntimeWarning(f"WARN: Unexpected sender address/port: {pkg_origin_address_port}")  # might need to uncomment this
             else:
                 if self._connected_to_other_client and self._connecting:
                     self._connecting = False
@@ -273,7 +272,11 @@ class PunchlineClient(Punchline):
         self._stop_all_threads = True
         self._connecting = False
         self._connected_to_other_client = False
-        self._LOGGER.info("<ENDED_CONNECTION>")
+        self._cancel_send_pkg = True  # (because punchline cant see _connecting or _connected_to_other_client it just has this cancel variable)
+        self._out_pkg_queue
+        while not self._out_pkg_queue.empty():  # clear queue
+            self._out_pkg_queue.get()
+        self._LOGGER.info("<CONNECTION_ENDED>")
 
     def receive(self):
         if self._in_data_queue.empty():
@@ -292,13 +295,19 @@ class PunchlineClient(Punchline):
         return self._current_data_collection_last_id
     
     def disconnect(self):
+        if not self._connected_to_other_client and not self._connecting:
+            self._LOGGER.info("<ALREADY_DISCONNECTED>")
+            self._end_connection()
+            return
+        
+        self._LOGGER.info("<DISCONNECTING>")
         if self._connected_to_other_client:
             # for client wait for data to be sent then end connection
             self._out_pkg_queue.put(self._create_pkg(self._PackageType.END))
             while self.get_send_progress() > 0:
                 time.sleep(0.01)
-            self._end_connection()
-        else:
+        elif self._connecting:
             # for server only send end package
             self._send_pkg(self._create_pkg(self._PackageType.END), self._destination_address_port)
-            self._end_connection()
+        # finally or only this if other client already disconnected
+        self._end_connection()
