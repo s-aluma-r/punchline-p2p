@@ -31,8 +31,10 @@ Here’s a breakdown:
 
 class Punchline(ABC):
 
+    # ABSOLUTES (these can never change because otherwise version checks wont work anymore)
+    _VERSION_HEADER = ">H"
+    _VERSION_HEADER_SIZE = 2
     # constants
-    _DEBUG = False
     _VERSION = 0  # 1 byte vanue for version
     _BUFFER_SIZE = 1024  # not more than 1500
     _HEADER = ">HBBI"  # header layout VERSION, TYPE, sequence_id
@@ -102,7 +104,6 @@ class Punchline(ABC):
     def _binary_to_address_port(self, binary):
         ip_binary = binary[:4]  # First 4 bytes for IP
         port_binary = binary[4:]  # Last 2 bytes for port
-        
         # Convert back to human-readable formats
         ip_address = socket.inet_ntoa(ip_binary)  # Binary to IPv4 string
         port = struct.unpack('!H', port_binary)[0]  # Unpack 2 bytes as big-endian integer
@@ -112,12 +113,6 @@ class Punchline(ABC):
         return address_port
     
     def _create_pkg(self, pkg_type: _PackageType, data: bytes = b'\x00', sequence_id: int = 0):
-        if not (0 <= self._VERSION < 65_535):
-            raise ValueError("_VERSION must be an unsigned 1-byte integer (0 to 65,535).")
-        if not (0 <= pkg_type < 256):
-            raise ValueError("pkg_type must be an unsigned 1-byte integer (0 to 255).")
-        if not (0 <= sequence_id <= 4_294_967_295):
-            raise ValueError("sequence_id must be an unsigned 4-byte integer (0 to 4,294,967,295).")
         if not (0 <= len(data) <= self._MAX_PKG_DATA_SIZE):
             raise ValueError(f"data must be bytes with max len={self._MAX_PKG_DATA_SIZE}.")
 
@@ -138,6 +133,9 @@ class Punchline(ABC):
             self._ack_hash_list.append(ack_hash)
 
     def _unpack_pkg(self, pkg, get_only_type=False):
+        v = struct.unpack(self._VERSION_HEADER, pkg[:self._VERSION_HEADER_SIZE])[0]
+        if v != self._VERSION:
+            raise VersionError()
         header = struct.unpack(self._HEADER, pkg[:self._HEADER_SIZE])
         pkg_type = header[self._HEADER_IDX["TYPE"]]
         if get_only_type:
@@ -193,3 +191,7 @@ class Punchline(ABC):
             self._last_rec_ack_ret_pkg = pkg
 
         return (pkg_version, pkg_type, pkg_sequence_id, data)
+
+class VersionError(Exception):
+    def __init__(self, message="The server/client you connected to is using a different version from you."):
+        super().__init__(message)

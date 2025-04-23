@@ -2,7 +2,7 @@ import threading
 import time
 import pandas as pd
 import logging
-from punchline_p2p.punchline import Punchline
+from punchline_p2p.punchline import Punchline, VersionError
 
 class PunchlineServer(Punchline):
     _LOCAL_IP = ""
@@ -27,7 +27,11 @@ class PunchlineServer(Punchline):
         self._LOCAL_PORT = port
 
     def _handle_received_pkg(self, pkg, sender):
-        package_parts = super()._handle_received_pkg(pkg, sender)
+        try:
+            package_parts = super()._handle_received_pkg(pkg, sender)
+        except VersionError:
+            self._send_pkg(self._create_pkg(self._PackageType.END), sender)  # this is sent back so the other person also sees that its the Wrong version
+            return
         if package_parts:
             pkg_version, pkg_type, pkg_sequence_id, data = package_parts
         else:
@@ -87,8 +91,9 @@ class PunchlineServer(Punchline):
 
         a_bin = self._address_port_to_binary(a)
         b_bin = self._address_port_to_binary(b)
-        send_b_to_a = threading.Thread(target=self._send_pkg, args=(self._create_pkg(self._PackageType.CON, b_bin), a), daemon=True)
-        send_a_to_b = threading.Thread(target=self._send_pkg, args=(self._create_pkg(self._PackageType.CON, a_bin), b), daemon=True)
+        # add sequence id 1 or 0 for user to differentiate if he connected first or second (this is a feature needed for future encryption)
+        send_b_to_a = threading.Thread(target=self._send_pkg, args=(self._create_pkg(self._PackageType.CON, b_bin, 1), a), daemon=True)
+        send_a_to_b = threading.Thread(target=self._send_pkg, args=(self._create_pkg(self._PackageType.CON, a_bin, 0), b), daemon=True)
         send_b_to_a.start()
         send_a_to_b.start()
 

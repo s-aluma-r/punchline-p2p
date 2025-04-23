@@ -9,7 +9,7 @@ from queue import Queue
 import logging
 # import base64
 # from punchline_p2p import Punchline
-from punchline_p2p.punchline import Punchline
+from punchline_p2p.punchline import Punchline, VersionError
 
 # IDEA: encrypt data before deviding into packages (this way resends etc dont matter) dont encrypt faf packages or acks
 
@@ -53,7 +53,7 @@ class PunchlineClient(Punchline):
         if len(code) > self._MAX_PKG_DATA_SIZE:
             raise ValueError(f"code can max be len: {self._MAX_PKG_DATA_SIZE}")
 
-        if self._connected_to_other_client or self._connecting:
+        if (self._connected_to_other_client or self._connecting):
             return False
 
         self._connecting = True
@@ -77,19 +77,20 @@ class PunchlineClient(Punchline):
         if self._DEDICATED_SERVER:
             resolved = (socket.gethostbyname(self._DEDICATED_SERVER[0]), self._DEDICATED_SERVER[1])
             return resolved
-        response = requests.get('https://raw.githubusercontent.com/s-aluma-r/punchline-p2p/refs/heads/main/active_servers.json', timeout=10)  # TODO catch requests.exceptions.Timeout
+        response = requests.get('https://raw.githubusercontent.com/s-aluma-r/punchline-p2p/refs/heads/main/active_servers.json', timeout=10)
+        # timeout error is fine (maybe wrap in own error when porting to micropython)
         if response.status_code == 200:
             versions = json.loads(response.content.decode())
             servers = versions[f"V{self._VERSION}"]
             rand = r.Random()
-            rand.seed(code)  # TODO is this "safe" to do or can it crash
+            rand.seed(code)
             server_pos = r.randint(0, len(servers)-1)
             server = servers[server_pos]
             ip = socket.gethostbyname(server["ip"])
             port = server["port"]
             return (ip, port)
         else:
-            return None  # TODO catch this and make it not crash
+            raise ConnectionError("Couldn't reach raw.githubusercontent.com to retrieve active servers")
         
     def _append_data_packages(self, data: bytes, is_json: bool = False):
         if is_json:
@@ -186,7 +187,19 @@ class PunchlineClient(Punchline):
         return None
 
     def _handle_received_pkg(self, pkg, sender):
-        package_parts = super()._handle_received_pkg(pkg, sender)
+        try:
+            package_parts = super()._handle_received_pkg(pkg, sender)
+        except VersionError:
+            self._send_pkg(self._create_pkg(self._PackageType.END), sender)
+            if self._connecting and not self._connected_to_other_client:
+                raise VersionError(f"the server you tried to reach [{self.destination_address_port}] had the wrong version")
+            elif self._connecting and self._connected_to_other_client:
+                raise VersionError(f"the client you tried to reach [{self.destination_address_port}] had the wrong version")
+            elif not self._connecting and self._connected_to_other_client:
+                raise VersionError(f"the client you tried to reach [{self.destination_address_port}] had the wrong version (but switched version mid conversation?)")
+            else:
+                raise Exception(" something with the client logic is off (not connected or connecting and received package shouldnt happen)")
+
         if package_parts:
             pkg_version, pkg_type, pkg_sequence_id, data = package_parts
         else:
@@ -235,7 +248,12 @@ class PunchlineClient(Punchline):
                 self._send_pkg(self._create_pkg(self._PackageType.KAL), self._destination_address_port)
 
         elif pkg_type == self._PackageType.END:
-            self._end_connection()
+            if self._connecting and not self._connected_to_other_client:
+                self._end_connection()
+                raise TimeoutError()
+            else:
+                self._end_connection()
+                # TODO somehow let user know connection endet
 
     def _receive_pkg_thread_func(self):
         # IDEA implement timeout with recvform itself somehow (if no pkg longer than a few times keepalive delay = timeout?)
@@ -244,18 +262,15 @@ class PunchlineClient(Punchline):
             pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
 
             if pkg_origin_address_port != self._destination_address_port:
-                self._LOGGER.warning("<Unexpected sender address/port> %s", pkg_origin_address_port)
-                raise RuntimeWarning(f"WARN: Unexpected sender address/port: {pkg_origin_address_port}")  # might need to uncomment this
+                self._LOGGER.warning("<Unexpected sender address/port> %s (IGNORING)", pkg_origin_address_port)
+                # raise RuntimeWarning(f"WARN: Unexpected sender address/port: {pkg_origin_address_port}")  # might need to uncomment this
             else:
                 if self._connected_to_other_client and self._connecting:
                     self._connecting = False
-
                 self._handle_received_pkg(pkg, pkg_origin_address_port)
 
     def _end_connection(self):
         self._stop_all_threads = True
-        if self._connecting and not self._connected_to_other_client:
-            raise TimeoutError()
         self._connecting = False
         self._connected_to_other_client = False
         self._LOGGER.info("<ENDED_CONNECTION>")
@@ -278,9 +293,12 @@ class PunchlineClient(Punchline):
     
     def disconnect(self):
         if self._connected_to_other_client:
+            # for client wait for data to be sent then end connection
             self._out_pkg_queue.put(self._create_pkg(self._PackageType.END))
             while self.get_send_progress() > 0:
                 time.sleep(0.01)
             self._end_connection()
-            return True
-        return False
+        else:
+            # for server only send end package
+            self._send_pkg(self._create_pkg(self._PackageType.END), self._destination_address_port)
+            self._end_connection()
