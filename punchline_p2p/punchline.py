@@ -44,7 +44,7 @@ class Punchline(ABC):
     _KEEPALIVE_DELAY_S = 1
     _PKG_CHECK_ACK_DELAY_S = 0.00001
     _PKG_CHECK_ACK_TIMEOUT_DELAY_S = 0.1  # wait a good while before resend (is probably due to bigger issue)
-    _SEND_QUEUE_EMPTY_CHECK_DEALY_S = 0.00001  # bigger than _PKG_CHECK_ACK_DELAY_S ? 
+    _SEND_QUEUE_EMPTY_CHECK_DEALY_S = 0.00001  # bigger than _PKG_CHECK_ACK_DELAY_S ?
     _CONNECTION_TIMEOUT_S = 5  # unused but for recvfrom timeout in future
     _MAX_RESEND_TRIES = 5
 
@@ -52,7 +52,7 @@ class Punchline(ABC):
     _UDP_socket = None
     _ack_hash_list = []
     _ack_hash_list_lock = threading.Lock()
-    _cancel_send_pkg=False
+    _cancel_send_pkg = False
 
     # there to differentiate single packages with same content sent right after each other from a resend (only needed for dat or jdt with sequence_id=0)
     _rolling_id = 0  # rotating id (0-256) to make 2 packages with same data different
@@ -77,7 +77,7 @@ class Punchline(ABC):
     # _NO_ACK_PKG_TYPES = [_PackageType.FAF, _PackageType.JFF, _PackageType.KAL, _PackageType.ACK]
     _ACK_RET_PKG_TYPES = [_PackageType.DAT, _PackageType.JDT, _PackageType.CON, _PackageType.END]  # ack return package types
 
-    def __init__(self, logging_level):
+    def __init__(self, logging_level=logging.NOTSET):
         self._HEADER_SIZE = struct.calcsize(self._HEADER)
         self._MAX_PKG_DATA_SIZE = self._BUFFER_SIZE-self._HEADER_SIZE
         self._UDP_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -89,7 +89,6 @@ class Punchline(ABC):
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         console_handler.setFormatter(formatter)
         self._LOGGER.addHandler(console_handler)
-
 
     def _hash(self, pkg: bytes):
         hash_object = hashlib.sha256()
@@ -112,7 +111,7 @@ class Punchline(ABC):
         # Resulting tuple
         address_port = (ip_address, port)
         return address_port
-    
+
     def _create_pkg(self, pkg_type: _PackageType, data: bytes = b'\x00', sequence_id: int = 0):
         if not (0 <= len(data) <= self._MAX_PKG_DATA_SIZE):
             raise ValueError(f"data must be bytes with max len={self._MAX_PKG_DATA_SIZE}.")
@@ -141,7 +140,7 @@ class Punchline(ABC):
         pkg_type = header[self._HEADER_IDX["TYPE"]]
         if get_only_type:
             return None, pkg_type, None, None, None
-        
+
         pkg_version = header[self._HEADER_IDX["VERSION"]]
         if pkg_version != self._VERSION:
             raise RuntimeError(f"Received package version:{pkg_version} != Client version")
@@ -158,12 +157,12 @@ class Punchline(ABC):
         self._UDP_socket.sendto(pkg, destination_address_port)
 
         resends = 0
-        self._cancel_send_pkg=False
+        self._cancel_send_pkg = False
         if pkg_type in self._ACK_RET_PKG_TYPES:
             pkg_hash = self._hash(pkg)
             timeout = 0
             while not self._cancel_send_pkg and not self._ack_hash_list_check_remove(pkg_hash) and resends < self._MAX_RESEND_TRIES:
-                # TODO make this function of time instead of max resend tries and maybe end connection if it runs out
+                #  TODO make this function of time instead of max resend tries and maybe end connection if it runs out
                 if timeout >= self._PKG_CHECK_ACK_TIMEOUT_DELAY_S:
                     self._UDP_socket.sendto(pkg, destination_address_port)  # resend pkg
                     timeout = 0
@@ -173,7 +172,8 @@ class Punchline(ABC):
                     time.sleep(self._PKG_CHECK_ACK_DELAY_S)
                     timeout += self._PKG_CHECK_ACK_DELAY_S
 
-            self.stat_ping = (timeout + self._PKG_CHECK_ACK_TIMEOUT_DELAY_S * resends)*1000
+            if not self._cancel_send_pkg:
+                self.stat_ping = (timeout + self._PKG_CHECK_ACK_TIMEOUT_DELAY_S * resends)*1000
 
             if resends >= self._MAX_RESEND_TRIES:
                 raise TimeoutError(f"{self._MAX_RESEND_TRIES=} reached")
@@ -188,7 +188,7 @@ class Punchline(ABC):
             self._ack_hash_list_append(data)  # no need for mutex/lock because only one thread uses this
         if pkg_type in self._ACK_RET_PKG_TYPES:
             self._send_pkg(self._create_pkg(self._PackageType.ACK, self._hash(pkg)), sender)
-            
+
             if self._last_rec_ack_ret_pkg == pkg:  # resend but already received last package
                 return None  # package was sent twice by mistake (because ack didnt reach destination)
             self._last_rec_ack_ret_pkg = pkg

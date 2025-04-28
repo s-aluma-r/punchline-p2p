@@ -33,11 +33,13 @@ class PunchlineClient(Punchline):
     _receive_thread = None
     _send_thread = None
     _code = None
+
+    _client_number = -1  # this is eather 1 or 0 after connecting
     
 
         # IDEA add optional method to replace functions for python -> binary and back (default json but pickle or custom should work too) using function as parameter at init with dults being json ones
     
-    def __init__(self, PSK: str = None, dedicated_server=None, logging_level=logging.INFO):
+    def __init__(self, PSK: str = None, dedicated_server=None, logging_level=logging.NOTSET):
         super().__init__(logging_level)
         self._DEDICATED_SERVER = dedicated_server
 
@@ -146,7 +148,7 @@ class PunchlineClient(Punchline):
             bin_data = data
 
         if fire_and_forget:
-            if len(data) > self._MAX_PKG_DATA_SIZE:
+            if len(bin_data) > self._MAX_PKG_DATA_SIZE:
                 raise ValueError("Invalid data: Data too big for fire_and_forget (single package)")
             else:
                 if is_json:
@@ -238,6 +240,7 @@ class PunchlineClient(Punchline):
             if not self._connected_to_other_client:
 
                 address_port = self._binary_to_address_port(data)
+                self._client_number = pkg_sequence_id
 
                 self._LOGGER.info("<UPDATING ADDRESS> %s --> %s", self._destination_address_port, address_port)
                 
@@ -293,6 +296,11 @@ class PunchlineClient(Punchline):
     def get_rec_progress(self):
         """goes down to 0 to show progress"""
         return self._current_data_collection_last_id
+    def get_client_number(self):
+        """positive int (0 or 1) representing of you are client 0 or 1 (returns None if not connected)"""
+        if not self.is_connected():
+            return None
+        return self._client_number
     
     def disconnect(self):
         if not self._connected_to_other_client and not self._connecting:

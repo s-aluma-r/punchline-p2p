@@ -30,6 +30,7 @@ class PunchlineServer(Punchline):
         try:
             package_parts = super()._handle_received_pkg(pkg, sender)
         except VersionError:
+            self._LOGGER.warning(f"<WRONG_VER  > by {sender}")
             self._send_pkg(self._create_pkg(self._PackageType.END), sender)  # this is sent back so the other person also sees that its the Wrong version
             return
         if package_parts:
@@ -46,6 +47,7 @@ class PunchlineServer(Punchline):
                     else:
                         raise Exception("Somehow _clients changed while locked")
                     if (client['ip'], client['port']) == sender:
+                        # not really needed doesnt even stop someone from connecting to himself (because port changes) thats what timeout does
                         return  # same ip , port and punchline tried connecting twice (shouldnt happen)
 
                     self._link(sender, (client['ip'], client['port']), data)
