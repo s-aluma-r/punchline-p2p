@@ -287,6 +287,9 @@ class PunchlineClient(Punchline):
         else:
             return self._in_data_queue.get()
 
+    def get_receive_queue_length(self):
+        return self._in_data_queue.qsize()
+
     def is_connected(self):
         return self._connected_to_other_client and not self._connecting
 

@@ -9,7 +9,7 @@ with open('README.md') as f:
 
 setup(
     name='punchline_p2p',
-    version='0.0.0',
+    version='0.0.1',
     description='A peer-to-peer communication library',
     long_description=readme,
     long_description_content_type='text/markdown',

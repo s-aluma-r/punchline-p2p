@@ -94,8 +94,8 @@ class PunchlineServer(Punchline):
         a_bin = self._address_port_to_binary(a)
         b_bin = self._address_port_to_binary(b)
         # add sequence id 1 or 0 for user to differentiate if he connected first or second (this is a feature needed for future encryption)
-        send_b_to_a = threading.Thread(target=self._send_pkg, args=(self._create_pkg(self._PackageType.CON, b_bin, 1), a), daemon=True)
-        send_a_to_b = threading.Thread(target=self._send_pkg, args=(self._create_pkg(self._PackageType.CON, a_bin, 0), b), daemon=True)
+        send_b_to_a = threading.Thread(target=self._send_pkg, args=(self._create_pkg(self._PackageType.CON, b_bin, 0), a), daemon=True)
+        send_a_to_b = threading.Thread(target=self._send_pkg, args=(self._create_pkg(self._PackageType.CON, a_bin, 1), b), daemon=True)
         send_b_to_a.start()
         send_a_to_b.start()
 
