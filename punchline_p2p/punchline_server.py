@@ -7,7 +7,7 @@ from punchline_p2p.punchline import Punchline, VersionError
 class PunchlineServer(Punchline):
     _LOCAL_IP = ""
     _LOCAL_PORT = 12345
-    _CLIENT_TIMEOUT_DELAY_S = 15
+    _CLIENT_TIMEOUT_DELAY_S = 30
     # client should be dataframe with punchline, ip, port, timeout where timeout is a timestamp that just triggers an end package to be sent to client
     _clients = None
     _clients_lock = threading.Lock()
