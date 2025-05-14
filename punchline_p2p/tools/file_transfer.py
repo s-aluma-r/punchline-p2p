@@ -83,7 +83,7 @@ def send_rec_main():
                 time.sleep(0.1)
     pc.disconnect()
 
-if __name__ == "__main__":
+def main():
     try:
         send_rec_main()
     except (Exception, KeyboardInterrupt) as e:
@@ -95,3 +95,6 @@ if __name__ == "__main__":
             print(f"{len(pc._current_data_collection)=}")
         else:
             print()
+    
+if __name__ == "__main__":
+    main()

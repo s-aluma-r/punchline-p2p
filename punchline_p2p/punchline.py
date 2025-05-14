@@ -195,6 +195,9 @@ class Punchline(ABC):
 
         return (pkg_version, pkg_type, pkg_sequence_id, data)
 
+    def get_max_pkg_data_size(self):
+        return self._MAX_PKG_DATA_SIZE
+
 class VersionError(Exception):
     def __init__(self, message="The server/client you connected to is using a different version from you."):
         super().__init__(message)
