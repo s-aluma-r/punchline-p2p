@@ -2,7 +2,7 @@
 ##  Connect with only a single string
 ### To Install use:
 ```
-git clone https://github.com/s-aluma-r/punchline-p2p
+git clone https://github.com/s-aluma-r/punchline-p2p.git
 cd punchline-p2p
 pip install -e .
 ```
