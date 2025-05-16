@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=40.0.0", "wheel"] # Required to build the package
+requires = ["setuptools>=40.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,11 +9,11 @@ description = "A peer-to-peer communication library"
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
-    # {name = "redacted", email = "redacted@redacted"}  # Optional
+    # {name = "redacted", email = "redacted@redacted"}
     {name = "s-aluma-r"}
 ]
-keywords = ["peer-to-peer", "communication"]  # Optional
-requires-python = ">=3.6"
+keywords = ["peer-to-peer", "communication"]
+requires-python = ">=3.8"
 
 dependencies = [
     "requests==2.32.3",
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.urls]
-homepage = "https://github.com/s-aluma-r/punchline-p2p"  # Optional
+homepage = "https://github.com/s-aluma-r/punchline-p2p"
 
 # Optional dependencies for running your own server
 [project.optional-dependencies]
@@ -30,7 +30,8 @@ tools = ["pandas==2.2.3"]
 
 # Optional: Specify entry points for executable scripts
 [project.scripts]
-punchline_file_transfer = "punchline_p2p.tools.file_transfer:main"  # Replace this with your actual entry point
+punchline_file_transfer = "punchline_p2p.tools.file_transfer:main"
+run_punchline_server = "punchline_p2p.tools.server:main"
 
 # Optional: Metadata for package distribution
 [tool.setuptools]

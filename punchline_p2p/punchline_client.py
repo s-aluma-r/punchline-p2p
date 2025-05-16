@@ -10,47 +10,50 @@ import logging
 # import base64
 # from punchline_p2p import Punchline
 from punchline_p2p.punchline import Punchline, VersionError
+from typing import Optional, List, Dict, Tuple, Any
 
 # IDEA: encrypt data before deviding into packages (this way resends etc dont matter) dont encrypt faf packages or acks
 
 class PunchlineClient(Punchline):
+    """This Client is used to setup a connection to another Client and send data back and forth"""
     # IDEA maybe turn the json parts inneral serial parts and make it possible to change serialisation methods
 
     # IDEA: maybe have second out queue for faf packages that alternates with normal send queue to allow sending data while large ammount of data is transmitted?
 
     # constant
-    _DEDICATED_SERVER = None
+    _DEDICATED_SERVER: Optional[Tuple[str, int]] = None
     
     # data
-    _stop_all_threads = False
-    _destination_address_port = None
-    _out_pkg_queue = Queue()  # only for packages
-    _connected_to_other_client = False
-    _connecting = False
-    _in_data_queue = Queue()  # for user data
-    _current_data_collection = None
-    _current_data_collection_last_id = None  # has to be none because none triggers fresh start
-    _receive_thread = None
-    _send_thread = None
-    _code = None
+    _stop_all_threads: bool = False
+    _destination_address_port: Optional[Tuple[str, int]] = None
+    _out_pkg_queue: Queue = Queue()  # only for packages
+    _connected_to_other_client: bool = False
+    _connecting: bool = False
+    _in_data_queue: Queue = Queue()  # for user data
+    _current_data_collection: Optional[list] = None
+    _current_data_collection_last_id: Optional[int] = None  # has to be none because none triggers fresh start
+    _receive_thread: Optional[threading.Thread] = None
+    _send_thread: Optional[threading.Thread] = None
+    _code: bytes = None  # TODO rename code -> punchline
 
     _client_number = -1  # this is eather 1 or 0 after connecting
     
 
         # IDEA add optional method to replace functions for python -> binary and back (default json but pickle or custom should work too) using function as parameter at init with dults being json ones
     
-    def __init__(self, PSK: str = None, dedicated_server=None, logging_level=logging.NOTSET):
+    def __init__(self, PSK: Optional[bytes] = None, dedicated_server: Optional[Tuple[str, int]] = None, logging_level: int = logging.NOTSET):
         super().__init__(logging_level)
         self._DEDICATED_SERVER = dedicated_server
 
-    def _send_pkg(self, pkg: bytes, destination_address_port):
+    def _send_pkg(self, pkg: bytes, destination_address_port: Tuple[str, int]) -> None:
         try:
             super()._send_pkg(pkg, destination_address_port)
         except TimeoutError as e:
             self._end_connection()
             raise e
 
-    def connect_async(self, code: bytes):
+    def connect_async(self, code: bytes) -> bool:  # TODO rename code -> punchline
+        """ connects you to another client with the same punchline(code). returns false if you are already connected or still connecting, returns True if connection process started"""
         # check code size (needs to fit in single data pkg)
         if len(code) > self._MAX_PKG_DATA_SIZE:
             raise ValueError(f"code can max be len: {self._MAX_PKG_DATA_SIZE}")
@@ -75,7 +78,8 @@ class PunchlineClient(Punchline):
         self._out_pkg_queue.put(self._create_pkg(self._PackageType.CON, code))
         return True
         
-    def _get_semi_random_server(self, code):
+    def _get_semi_random_server(self, code: bytes) -> Tuple[str, int]:  # TODO rename code -> punchline
+        """ returns a random server from the server list that fits the version of this client based on the punchline(code) as a seed (or the dedicated server given while creating PunchlineClient Obj)"""
         if self._DEDICATED_SERVER:
             resolved = (socket.gethostbyname(self._DEDICATED_SERVER[0]), self._DEDICATED_SERVER[1])
             return resolved
@@ -94,7 +98,9 @@ class PunchlineClient(Punchline):
         else:
             raise ConnectionError("Couldn't reach raw.githubusercontent.com to retrieve active servers")
         
-    def _append_data_packages(self, data: bytes, is_json: bool = False):
+    def _append_data_packages(self, data: bytes, is_json: bool = False) -> None:
+        # TODO maybe this should get any data then determine what it is and handle it acordingly because its only used in send
+        """takes binary data, slices it into packages and appends them to the sending queue"""
         if is_json:
             pkg_type = self._PackageType.JDT
         else:
@@ -112,7 +118,8 @@ class PunchlineClient(Punchline):
             # rint(f"<DBG> appending: {s_id=}, {chunk=}")
             self._out_pkg_queue.put(self._create_pkg(pkg_type, data=chunk, sequence_id=s_id))
 
-    def _send_pkg_thread_func(self):
+    def _send_pkg_thread_func(self) -> None:
+        """this function runs in the sending thread and sends packages if available or periodic keepalive packages"""
         last_keepalive_time = 0
         while not self._stop_all_threads:
             if not self._out_pkg_queue.empty():
@@ -129,7 +136,8 @@ class PunchlineClient(Punchline):
                 # wait a little
                 time.sleep(self._SEND_QUEUE_EMPTY_CHECK_DEALY_S)
 
-    def send(self, data, fire_and_forget=False):
+    def send(self, data, fire_and_forget: bool = False) -> bool:
+        """this function gets data and prepares it to be sent to the other client. Data can be anyting thats serialisable or binary"""
         if not self._connected_to_other_client or self._connecting:
             return False
         # print(f"<DBG> data: {data}")
@@ -160,7 +168,8 @@ class PunchlineClient(Punchline):
             self._append_data_packages(bin_data, is_json=is_json)
         return True
 
-    def _collect_multi_package_data(self, data, pkg_sequence_id):
+    def _collect_multi_package_data(self, data: bytes, pkg_sequence_id: int) -> Optional[bytes]:
+        """This function collects and assembles data from consecutive data packages that belong together"""
          # collect, acknowledge (not with out queue), and if id 0 add to in queue
 
         if not self._current_data_collection_last_id:  # last transmission was done so start new one
@@ -188,7 +197,8 @@ class PunchlineClient(Punchline):
             return full_data
         return None
 
-    def _handle_received_pkg(self, pkg, sender):
+    def _handle_received_pkg(self, pkg: bytes, sender: Tuple[str, int]) -> None:
+        """This function handles receiving of packages and turns them back into the intendet data"""
         try:
             package_parts = super()._handle_received_pkg(pkg, sender)
         except VersionError:
@@ -258,7 +268,8 @@ class PunchlineClient(Punchline):
                 self._end_connection()
                 # TODO somehow let user know connection endet
 
-    def _receive_pkg_thread_func(self):
+    def _receive_pkg_thread_func(self) -> None:
+        """This function runs in the receive thread and listens for packages to pass along to the handling function"""
         # IDEA implement timeout with recvform itself somehow (if no pkg longer than a few times keepalive delay = timeout?)
         while not self._stop_all_threads:
 
@@ -271,7 +282,8 @@ class PunchlineClient(Punchline):
                     self._connecting = False
                 self._handle_received_pkg(pkg, pkg_origin_address_port)
 
-    def _end_connection(self):
+    def _end_connection(self) -> None:
+        """This function ends the connection"""
         self._stop_all_threads = True
         self._connecting = False
         self._connected_to_other_client = False
@@ -281,31 +293,35 @@ class PunchlineClient(Punchline):
             self._out_pkg_queue.get()
         self._LOGGER.info("<CONNECTION_ENDED>")
 
-    def receive(self):
+    def receive(self) -> Any:
+        """takes one obj from received data queue and returns it to you (returns None uf queue empty)"""
         if self._in_data_queue.empty():
             return None
         else:
             return self._in_data_queue.get()
 
-    def get_receive_queue_length(self):
+    def get_receive_queue_length(self) -> int:
+        """returns the length of the receive queue (ammount of data you received)"""
         return self._in_data_queue.qsize()
 
-    def is_connected(self):
+    def is_connected(self) -> bool:
+        """returns if you are connected to another client"""
         return self._connected_to_other_client and not self._connecting
 
-    def get_send_progress(self):
-        """goes down to 0 to show progress"""
+    def get_send_progress(self) -> int:
+        """counts down to 0 to show progress of current package being sent"""
         return self._out_pkg_queue.qsize()
-    def get_rec_progress(self):
-        """goes down to 0 to show progress"""
+    def get_rec_progress(self) -> int:
+        """counts down to 0 to show progress or current package being received"""
         return self._current_data_collection_last_id
-    def get_client_number(self):
-        """positive int (0 or 1) representing of you are client 0 or 1 (returns None if not connected)"""
+    def get_client_number(self) -> Optional[int]:
+        """returns positive int (0 or 1) representing of you are client 0 or 1 (returns None if not connected)"""
         if not self.is_connected():
             return None
         return self._client_number
     
-    def disconnect(self):
+    def disconnect(self) -> None:
+        """Disconnects you from other client"""
         if not self._connected_to_other_client and not self._connecting:
             self._LOGGER.info("<ALREADY_DISCONNECTED>")
             self._end_connection()

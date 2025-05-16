@@ -7,6 +7,7 @@ import hashlib
 import threading
 import random as r
 import logging
+from typing import Optional, List, Dict, Tuple
 
 """
 limitations:
@@ -30,39 +31,41 @@ Here’s a breakdown:
 
 
 class Punchline(ABC):
+    """Base class for punchline p2p functionality"""
 
     # ABSOLUTES (these can never change because otherwise version checks wont work anymore)
-    _VERSION_HEADER = ">H"
-    _VERSION_HEADER_SIZE = 2
+    _VERSION_HEADER: str = ">H"
+    _VERSION_HEADER_SIZE: int = 2
     # constants
-    _VERSION = 0  # 1 byte vanue for version
-    _BUFFER_SIZE = 1024  # not more than 1500
-    _HEADER = ">HBBI"  # header layout VERSION, TYPE, sequence_id
-    _HEADER_IDX = {"VERSION": 0, "TYPE": 1, "ROLLING_ID": 2, "SEQUENCE_ID": 3}
-    _HEADER_SIZE = 0
-    _MAX_PKG_DATA_SIZE = 0
-    _KEEPALIVE_DELAY_S = 1
-    _PKG_CHECK_ACK_DELAY_S = 0.00001
-    _PKG_CHECK_ACK_TIMEOUT_DELAY_S = 0.1  # wait a good while before resend (is probably due to bigger issue)
-    _SEND_QUEUE_EMPTY_CHECK_DEALY_S = 0.00001  # bigger than _PKG_CHECK_ACK_DELAY_S ?
-    _CONNECTION_TIMEOUT_S = 5  # unused but for recvfrom timeout in future
-    _MAX_RESEND_TRIES = 5
+    _VERSION: int = 0  # 1 byte vanue for version
+    _BUFFER_SIZE: int = 1024  # not more than 1500
+    _HEADER: str = ">HBBI"  # header layout VERSION, TYPE, sequence_id
+    _HEADER_IDX: Dict[str, int] = {"VERSION": 0, "TYPE": 1, "ROLLING_ID": 2, "SEQUENCE_ID": 3}
+    _HEADER_SIZE: int = 0
+    _MAX_PKG_DATA_SIZE: int = 0
+    _KEEPALIVE_DELAY_S: float = 1
+    _PKG_CHECK_ACK_DELAY_S: float = 0.00001
+    _PKG_CHECK_ACK_TIMEOUT_DELAY_S: float = 0.1  # wait a good while before resend (is probably due to bigger issue)
+    _SEND_QUEUE_EMPTY_CHECK_DEALY_S: float = 0.00001  # bigger than _PKG_CHECK_ACK_DELAY_S ?  # TODO spelling
+    _CONNECTION_TIMEOUT_S: float = 5  # unused but for recvfrom timeout in future
+    _MAX_RESEND_TRIES: int = 5
 
     # data
-    _UDP_socket = None
-    _ack_hash_list = []
-    _ack_hash_list_lock = threading.Lock()
-    _cancel_send_pkg = False
+    _UDP_socket: Optional[socket.socket] = None
+    _ack_hash_list: List[bytes] = []
+    _ack_hash_list_lock: threading.Lock = threading.Lock()
+    _cancel_send_pkg: bool = False
 
     # there to differentiate single packages with same content sent right after each other from a resend (only needed for dat or jdt with sequence_id=0)
-    _rolling_id = 0  # rotating id (0-256) to make 2 packages with same data different
-    _last_rec_ack_ret_pkg = b''  # last received ack return package (just to check that last recieved package isnt the same as current one)
+    _rolling_id: int = 0  # rotating id (0-256) to make 2 packages with same data different
+    _last_rec_ack_ret_pkg: bytes = b''  # last received ack return package (just to check that last received package isnt the same as current one)
 
     # statistics
-    stat_resends = 0
-    stat_ping = 0
+    stat_resends: int = 0
+    stat_ping: float = 0
 
     class _PackageType(IntEnum):
+        """standard package definitions"""
         KAL = 0  # KeepALive                        | 
         DAT = 1  # DATa                             |
         JDT = 2  # Json Data                        | same as data only json
@@ -75,9 +78,10 @@ class Punchline(ABC):
         # TODO PSK --> switch to pre shared key (this needs to have some logic with back and forth to see if change in encryption has worked or not)
 
     # _NO_ACK_PKG_TYPES = [_PackageType.FAF, _PackageType.JFF, _PackageType.KAL, _PackageType.ACK]
-    _ACK_RET_PKG_TYPES = [_PackageType.DAT, _PackageType.JDT, _PackageType.CON, _PackageType.END]  # ack return package types
+    _ACK_RET_PKG_TYPES: List[_PackageType] = [_PackageType.DAT, _PackageType.JDT, _PackageType.CON, _PackageType.END]  # there packages require an ack to be returned
 
-    def __init__(self, logging_level=logging.NOTSET):
+    def __init__(self, logging_level: int = logging.NOTSET):
+        """Constructor"""
         self._HEADER_SIZE = struct.calcsize(self._HEADER)
         self._MAX_PKG_DATA_SIZE = self._BUFFER_SIZE-self._HEADER_SIZE
         self._UDP_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -90,18 +94,21 @@ class Punchline(ABC):
         console_handler.setFormatter(formatter)
         self._LOGGER.addHandler(console_handler)
 
-    def _hash(self, pkg: bytes):
+    def _hash(self, pkg: bytes) -> bytes:
+        """Generates consistant hash"""
         hash_object = hashlib.sha256()
         hash_object.update(pkg)
         return hash_object.digest()
 
-    def _address_port_to_binary(self, address_port):
+    def _address_port_to_binary(self, address_port: Tuple[str, int]) -> bytes:
+        """Converts address and port to binary to send"""
         ip_binary = socket.inet_aton(address_port[0])  # 4-byte binary for IPv4
         port_binary = struct.pack('!H', address_port[1])  # 2-byte binary for port in network order
         bin_address = ip_binary+port_binary
         return bin_address
 
-    def _binary_to_address_port(self, binary):
+    def _binary_to_address_port(self, binary: bytes) -> Tuple[str, int]:
+        """Converts binary address and port back to python objects"""
         ip_binary = binary[:4]  # First 4 bytes for IP
         port_binary = binary[4:]  # Last 2 bytes for port
         # Convert back to human-readable formats
@@ -112,7 +119,8 @@ class Punchline(ABC):
         address_port = (ip_address, port)
         return address_port
 
-    def _create_pkg(self, pkg_type: _PackageType, data: bytes = b'\x00', sequence_id: int = 0):
+    def _create_pkg(self, pkg_type: _PackageType, data: bytes = b'\x00', sequence_id: int = 0) -> bytes:
+        """Creates packsage with header and data (and optional sequence_id in case of multiple packages)"""
         if not (0 <= len(data) <= self._MAX_PKG_DATA_SIZE):
             raise ValueError(f"data must be bytes with max len={self._MAX_PKG_DATA_SIZE}.")
 
@@ -121,18 +129,21 @@ class Punchline(ABC):
 
         return header+data
 
-    def _ack_hash_list_check_remove(self, ack_hash):
+    def _ack_hash_list_check_remove(self, ack_hash) -> bool:
+        """Checks if ack has arrived and removes it from memory"""
         with self._ack_hash_list_lock:
             if ack_hash in self._ack_hash_list:
                 self._ack_hash_list.remove(ack_hash)
                 return True
             return False
 
-    def _ack_hash_list_append(self, ack_hash):
+    def _ack_hash_list_append(self, ack_hash) -> None:
+        """Add hash to hash list"""
         with self._ack_hash_list_lock:
             self._ack_hash_list.append(ack_hash)
 
-    def _unpack_pkg(self, pkg, get_only_type=False):
+    def _unpack_pkg(self, pkg: bytes, get_only_type: bool = False) -> Tuple[Optional[int], int, Optional[int], Optional[int], Optional[bytes]]:
+        """Unpacks package into its parts with built in version check"""
         v = struct.unpack(self._VERSION_HEADER, pkg[:self._VERSION_HEADER_SIZE])[0]
         if v != self._VERSION:
             raise VersionError()
@@ -149,7 +160,8 @@ class Punchline(ABC):
         data = pkg[self._HEADER_SIZE:]
         return pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data
 
-    def _send_pkg(self, pkg: bytes, destination_address_port):
+    def _send_pkg(self, pkg: bytes, destination_address_port: Tuple[str, int]) -> None:
+        """Sends package to defined address annd port"""
         split_pkg = self._unpack_pkg(pkg, get_only_type=not self._LOGGER.isEnabledFor(logging.DEBUG))
         pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data = split_pkg
 
@@ -179,7 +191,8 @@ class Punchline(ABC):
                 raise TimeoutError(f"{self._MAX_RESEND_TRIES=} reached")
         self._LOGGER.debug("<SENT    > %s -%d-> %d, %d, %d, %d, %.100s", destination_address_port, resends+1, pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data)
 
-    def _handle_received_pkg(self, pkg, sender):
+    def _handle_received_pkg(self, pkg: bytes, sender: Tuple[str, int]) -> Optional[Tuple[int, int, int, bytes]]:
+        """Handles reception of package and sends back ack (extend this to handle data)"""
         pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data = self._unpack_pkg(pkg)
 
         self._LOGGER.debug("<RECIEVED> %s --> %d, %d, %d, %d, %.100s", sender, pkg_version, pkg_type, pkg_rolling_id, pkg_sequence_id, data)
@@ -195,9 +208,11 @@ class Punchline(ABC):
 
         return (pkg_version, pkg_type, pkg_sequence_id, data)
 
-    def get_max_pkg_data_size(self):
+    def get_max_pkg_data_size(self) -> int:
+        """Returns the maximum binary size for a single package"""
         return self._MAX_PKG_DATA_SIZE
 
 class VersionError(Exception):
+    """A generic Exception to signal a version conflict between server and client or 2 clients"""
     def __init__(self, message="The server/client you connected to is using a different version from you."):
         super().__init__(message)

@@ -72,7 +72,7 @@
 </span><span id="L-7"><a href="#L-7"><span class="linenos">  7</span></a><span class="k">class</span> <span class="nc">PunchlineServer</span><span class="p">(</span><span class="n">Punchline</span><span class="p">):</span>
 </span><span id="L-8"><a href="#L-8"><span class="linenos">  8</span></a>    <span class="n">_LOCAL_IP</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
 </span><span id="L-9"><a href="#L-9"><span class="linenos">  9</span></a>    <span class="n">_LOCAL_PORT</span> <span class="o">=</span> <span class="mi">12345</span>
-</span><span id="L-10"><a href="#L-10"><span class="linenos"> 10</span></a>    <span class="n">_CLIENT_TIMEOUT_DELAY_S</span> <span class="o">=</span> <span class="mi">15</span>
+</span><span id="L-10"><a href="#L-10"><span class="linenos"> 10</span></a>    <span class="n">_CLIENT_TIMEOUT_DELAY_S</span> <span class="o">=</span> <span class="mi">30</span>
 </span><span id="L-11"><a href="#L-11"><span class="linenos"> 11</span></a>    <span class="c1"># client should be dataframe with punchline, ip, port, timeout where timeout is a timestamp that just triggers an end package to be sent to client</span>
 </span><span id="L-12"><a href="#L-12"><span class="linenos"> 12</span></a>    <span class="n">_clients</span> <span class="o">=</span> <span class="kc">None</span>
 </span><span id="L-13"><a href="#L-13"><span class="linenos"> 13</span></a>    <span class="n">_clients_lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
@@ -192,7 +192,7 @@
             <div class="pdoc-code codehilite"><pre><span></span><span id="PunchlineServer-8"><a href="#PunchlineServer-8"><span class="linenos">  8</span></a><span class="k">class</span> <span class="nc">PunchlineServer</span><span class="p">(</span><span class="n">Punchline</span><span class="p">):</span>
 </span><span id="PunchlineServer-9"><a href="#PunchlineServer-9"><span class="linenos">  9</span></a>    <span class="n">_LOCAL_IP</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
 </span><span id="PunchlineServer-10"><a href="#PunchlineServer-10"><span class="linenos"> 10</span></a>    <span class="n">_LOCAL_PORT</span> <span class="o">=</span> <span class="mi">12345</span>
-</span><span id="PunchlineServer-11"><a href="#PunchlineServer-11"><span class="linenos"> 11</span></a>    <span class="n">_CLIENT_TIMEOUT_DELAY_S</span> <span class="o">=</span> <span class="mi">15</span>
+</span><span id="PunchlineServer-11"><a href="#PunchlineServer-11"><span class="linenos"> 11</span></a>    <span class="n">_CLIENT_TIMEOUT_DELAY_S</span> <span class="o">=</span> <span class="mi">30</span>
 </span><span id="PunchlineServer-12"><a href="#PunchlineServer-12"><span class="linenos"> 12</span></a>    <span class="c1"># client should be dataframe with punchline, ip, port, timeout where timeout is a timestamp that just triggers an end package to be sent to client</span>
 </span><span id="PunchlineServer-13"><a href="#PunchlineServer-13"><span class="linenos"> 13</span></a>    <span class="n">_clients</span> <span class="o">=</span> <span class="kc">None</span>
 </span><span id="PunchlineServer-14"><a href="#PunchlineServer-14"><span class="linenos"> 14</span></a>    <span class="n">_clients_lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
@@ -297,8 +297,7 @@
 </span></pre></div>
 
 
-            <div class="docstring"><p>Helper class that provides a standard way to create an ABC using
-inheritance.</p>
+            <div class="docstring"><p>Base class for punchline p2p functionality</p>
 </div>
 
 
@@ -327,7 +326,9 @@ inheritance.</p>
 </span></pre></div>
 
 
-    
+            <div class="docstring"><p>Constructor</p>
+</div>
+
 
                             </div>
                             <div id="PunchlineServer.run_server" class="classattr">

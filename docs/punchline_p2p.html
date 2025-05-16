@@ -25,6 +25,8 @@
             <ul>
   <li><a href="#punchline-p2p">Punchline P2P</a>
   <ul>
+    <li><a href="#connect-with-only-a-single-string">Connect with only a single string</a></li>
+    <li><a href="#contribute-a-server">Contribute a server</a></li>
     <li><a href="#disclamer">Disclamer:</a></li>
   </ul></li>
 </ul>
@@ -54,13 +56,28 @@ punchline_p2p    </h1>
 
                         <div class="docstring"><h1 id="punchline-p2p">Punchline P2P</h1>
 
-<h3 id="connect-with-only-a-single-string">Connect with only a single string</h3>
+<h2 id="connect-with-only-a-single-string">Connect with only a single string</h2>
 
-<pre><code>cd punchline-p2p
+<h3 id="to-install-use">To Install use:</h3>
+
+<pre><code>git clone https://github.com/s-aluma-r/punchline-p2p
+cd punchline-p2p
 pip install -e .
 </code></pre>
 
-<p>Then use:</p>
+<p>or </p>
+
+<pre><code>pip install git+https://github.com/s-aluma-r/punchline-p2p.git
+</code></pre>
+
+<h3 id="to-test-you-can-use">To test you can use:</h3>
+
+<pre><code>punchline_file_transfer
+</code></pre>
+
+<p>this is unencrypted filetransfer for now but will be a proper encrypted feature in the future</p>
+
+<h3 id="how-to-use">How to use:</h3>
 
 <pre><code>from punchline_p2p import PunchlineClient
 
@@ -79,17 +96,40 @@ print(f"Connected to: {pl._destination_address_port}")  # this will be exposed v
 <p>Now you can use</p>
 
 <pre><code>pc.send("your serialisable or binary data")
-
-data = pc.recieve()
 </code></pre>
 
-<p>To start a local server you currently need to use:</p>
+<p>to send data
+and</p>
+
+<pre><code>data = None
+while data is None:
+    time.sleep(0.01)
+    data = pc.recieve()
+</code></pre>
+
+<p>to receive data (other ways of handling no data being received are also possible to use)</p>
+
+<h3 id="local-testing-server">Local testing server:</h3>
+
+<p>use</p>
+
+<pre><code>pip install "git+https://github.com/s-aluma-r/punchline-p2p.git#egg=punchline_p2p[server]"
+</code></pre>
 
 <pre><code>from punchline_p2p import PunchlineServer
 s = PunchlineServer()
 </code></pre>
 
-<p>This wont be needed in the future when at least one server is public.</p>
+<p>or</p>
+
+<pre><code>run_punchline_server
+</code></pre>
+
+<h2 id="contribute-a-server">Contribute a server</h2>
+
+<p>There is currently a server public thats hosted by me.
+If you are interested in contributing a server to this project i will be creating a docker-compose file and a normal instruction soon and a form to submit your server address and port.
+The load of all users is automatically spread to all version matching servers.</p>
 
 <h2 id="disclamer">Disclamer:</h2>
 
