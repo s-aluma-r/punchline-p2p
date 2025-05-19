@@ -2,8 +2,9 @@
 import logging
 import traceback
 import time
-from punchline_p2p import PunchlineServer
-if __name__ == "__main__":
+from punchline_p2p.punchline_server import PunchlineServer
+
+def main():
     while True:
         try:
             s = PunchlineServer()
@@ -20,3 +21,6 @@ if __name__ == "__main__":
             print(f"[{formatted_time}] An exception occurred: {e}")
             print("Stack trace:")
             traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
