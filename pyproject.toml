@@ -7,7 +7,9 @@ name = "punchline_p2p"
 version = "0.0.2"
 description = "A peer-to-peer communication library"
 readme = "README.md"
-license = {file = "LICENSE"}
+# license = {file = "LICENSE"}
+license = "MIT"  # Or use an SPDX-compliant license string
+license-files = ["LICENSE"]
 authors = [
     # {name = "redacted", email = "redacted@redacted"}
     {name = "s-aluma-r"}
