@@ -35,7 +35,7 @@ run_punchline_server = "punchline_p2p.tools.server:main"
 
 # Optional: Metadata for package distribution
 [tool.setuptools]
-packages = ["punchline_p2p"]  # Specify your package directory
+packages = ["setuptools.find_packages"]  # Specify your package directory
 
 # Optional: Additional setuptools configurations
 # [tool.setuptools.package-data]
