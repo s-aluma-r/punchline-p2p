@@ -7,9 +7,9 @@ name = "punchline_p2p"
 version = "0.0.2"
 description = "A peer-to-peer communication library"
 readme = "README.md"
-# license = {file = "LICENSE"}
-license = "MIT"  # Or use an SPDX-compliant license string
-license-files = ["LICENSE"]
+license = {file = "LICENSE"}
+# license = "MIT"  # Or use an SPDX-compliant license string
+# license-files = ["LICENSE"]
 authors = [
     # {name = "redacted", email = "redacted@redacted"}
     {name = "s-aluma-r"}
@@ -30,14 +30,14 @@ homepage = "https://github.com/s-aluma-r/punchline-p2p"
 server = ["pandas==2.2.3"]
 tools = ["pandas==2.2.3"]
 
-# Optional: Specify entry points for executable scripts
+# Optional: Specify entry points for executable scripts,
 [project.scripts]
 punchline_file_transfer = "punchline_p2p.tools.file_transfer:main"
 run_punchline_server = "punchline_p2p.tools.server:main"
 
 # Optional: Metadata for package distribution
 [tool.setuptools]
-packages = ["setuptools.find_packages"]  # Specify your package directory
+packages = ["punchline_p2p", "punchline_p2p.tools"]  # Specify your package directory
 
 # Optional: Additional setuptools configurations
 # [tool.setuptools.package-data]
