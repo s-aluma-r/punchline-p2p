@@ -5,7 +5,7 @@ import sys
 import time
 # import logging
 from punchline_p2p import PunchlineClient
-TARGET_FOLDER = "/tmp/receive/"
+TARGET_FOLDER = "./"  #  "/tmp/receive/"
 CONNECTION_PUNCHLINE = None
 pc = None
 def send_rec_main():
