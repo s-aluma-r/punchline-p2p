@@ -25,11 +25,14 @@ def send_rec_main():
     
     pc.connect_async(code.encode(encoding='utf-8'))
     
-    while not pc.is_connected():
+    while pc.is_connecting():  # and not pc.is_connected():
         time.sleep(0.01)
-        
+
+    if not pc.is_connected():
+        print("Timed out")
+        sys.exit(1)
+
     print(f"Connected to: {pc._destination_address_port}")
-    
     if len(sys.argv) == 2:
         # send
         path = sys.argv[1]

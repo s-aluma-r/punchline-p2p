@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "punchline_p2p"
-version = "0.0.2"
+version = "0.0.3"
 description = "A peer-to-peer communication library"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -28,16 +28,16 @@ homepage = "https://github.com/s-aluma-r/punchline-p2p"
 # Optional dependencies for running your own server
 [project.optional-dependencies]
 server = ["pandas==2.2.3"]
-tools = ["pandas==2.2.3"]
+# tools = []
 
 # Optional: Specify entry points for executable scripts,
 [project.scripts]
 punchline_file_transfer = "punchline_p2p.tools.file_transfer:main"
-run_punchline_server = "punchline_p2p.tools.server:main"
+run_punchline_server = "punchline_p2p.server.server:main"
 
 # Optional: Metadata for package distribution
 [tool.setuptools]
-packages = ["punchline_p2p", "punchline_p2p.tools"]  # Specify your package directory
+packages = ["punchline_p2p", "punchline_p2p.tools", "punchline_p2p.server"]  # Specify your package directory
 
 # Optional: Additional setuptools configurations
 # [tool.setuptools.package-data]

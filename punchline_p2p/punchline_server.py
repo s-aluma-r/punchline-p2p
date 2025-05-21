@@ -1,8 +1,14 @@
 import threading
 import time
-import pandas as pd
 import logging
+
+try:
+    import pandas as pd
+except (ImportError, ModuleNotFoundError) as e:
+    raise ImportError("PunchlineServer requires optional dependencies. Install them using 'pip install punchline_p2p[server]'.") from e
+
 from punchline_p2p.punchline import Punchline, VersionError
+
 
 class PunchlineServer(Punchline):
     _LOCAL_IP = ""
@@ -11,6 +17,7 @@ class PunchlineServer(Punchline):
     # client should be dataframe with punchline, ip, port, timeout where timeout is a timestamp that just triggers an end package to be sent to client
     _clients = None
     _clients_lock = threading.Lock()
+    _receive_thread = None
 
 
     def __init__(self, port=12345, logging_level=logging.INFO):
@@ -99,13 +106,17 @@ class PunchlineServer(Punchline):
         send_b_to_a.start()
         send_a_to_b.start()
 
-    def _receive_thread(self):
+    def _receive_pkg_thread_func(self):
         while True:
-            pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
-            self._handle_received_pkg(pkg, pkg_origin_address_port)
+            try:
+                pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
+                self._handle_received_pkg(pkg, pkg_origin_address_port)
+            except Exception as e:
+                self._LOGGER.error(f"<ERROR> {e}")
+                self.in_thread_error_queue.put(e)    
     
     def run_server(self):
-        self._receive_thread = threading.Thread(target=self._receive_thread, daemon=True)
+        self._receive_thread = threading.Thread(target=self._receive_pkg_thread_func, daemon=True)
         self._receive_thread.start()
         while True:
             self._check_timeout()

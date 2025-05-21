@@ -36,12 +36,12 @@ class PunchlineClient(Punchline):
     _send_thread: Optional[threading.Thread] = None
     _code: bytes = None  # TODO rename code -> punchline
 
-    _client_number = -1  # this is eather 1 or 0 after connecting
+    _client_number: int = -1  # this is eather 1 or 0 after connecting
     
 
         # IDEA add optional method to replace functions for python -> binary and back (default json but pickle or custom should work too) using function as parameter at init with dults being json ones
     
-    def __init__(self, PSK: Optional[bytes] = None, dedicated_server: Optional[Tuple[str, int]] = None, logging_level: int = logging.NOTSET):
+    def __init__(self, PSK: Optional[bytes] = None, dedicated_server: Optional[Tuple[str, int]] = None, logging_level: int = logging.CRITICAL):
         super().__init__(logging_level)
         self._DEDICATED_SERVER = dedicated_server
 
@@ -76,6 +76,23 @@ class PunchlineClient(Punchline):
         self._send_thread.start()
 
         self._out_pkg_queue.put(self._create_pkg(self._PackageType.CON, code))
+        return True
+
+    def connect(self, punchline: bytes) -> bool:
+        
+        if not self.connect_async(punchline):
+            return False
+
+        while self.is_connecting():
+            time.sleep(0.01)
+
+        if not self.is_connected():
+            if not self.in_thread_error_queue.empty():
+                raise self.in_thread_error_queue.get()
+
+            raise Exception("Unexpected Error")
+                
+
         return True
         
     def _get_semi_random_server(self, code: bytes) -> Tuple[str, int]:  # TODO rename code -> punchline
@@ -122,19 +139,24 @@ class PunchlineClient(Punchline):
         """this function runs in the sending thread and sends packages if available or periodic keepalive packages"""
         last_keepalive_time = 0
         while not self._stop_all_threads:
-            if not self._out_pkg_queue.empty():
-                pkg = self._out_pkg_queue.get()
-                self._send_pkg(pkg, self._destination_address_port)
-            else:
-                # check if its time for a keepalive
-                now = time.time()
-                keepalive_delay = now - last_keepalive_time
-                if keepalive_delay > self._KEEPALIVE_DELAY_S:
-                    # send keepalive
-                    self._send_pkg(self._create_pkg(self._PackageType.KAL), self._destination_address_port)
-                    last_keepalive_time = now
-                # wait a little
-                time.sleep(self._SEND_QUEUE_EMPTY_CHECK_DEALY_S)
+            try:
+                if not self._out_pkg_queue.empty():
+                    pkg = self._out_pkg_queue.get()
+                    self._send_pkg(pkg, self._destination_address_port)
+                else:
+                    # check if its time for a keepalive
+                    now = time.time()
+                    keepalive_delay = now - last_keepalive_time
+                    if keepalive_delay > self._KEEPALIVE_DELAY_S:
+                        # send keepalive
+                        self._send_pkg(self._create_pkg(self._PackageType.KAL), self._destination_address_port)
+                        last_keepalive_time = now
+                    # wait a little
+                    time.sleep(self._SEND_QUEUE_EMPTY_CHECK_DEALY_S)
+            except Exception as e:
+                self._LOGGER.error(f"<ERROR> {e}")
+                self.in_thread_error_queue.put(e)
+                self.disconnect()
 
     def send(self, data, fire_and_forget: bool = False) -> bool:
         """this function gets data and prepares it to be sent to the other client. Data can be anyting thats serialisable or binary"""
@@ -273,14 +295,20 @@ class PunchlineClient(Punchline):
         # IDEA implement timeout with recvform itself somehow (if no pkg longer than a few times keepalive delay = timeout?)
         while not self._stop_all_threads:
 
-            pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
+            try:
+                pkg, pkg_origin_address_port = self._UDP_socket.recvfrom(self._BUFFER_SIZE)
 
-            if pkg_origin_address_port != self._destination_address_port:
-                self._LOGGER.warning("<Unexpected sender address/port> %s (IGNORING)", pkg_origin_address_port)
-            else:
-                if self._connected_to_other_client and self._connecting:
-                    self._connecting = False
-                self._handle_received_pkg(pkg, pkg_origin_address_port)
+                if pkg_origin_address_port != self._destination_address_port:
+                    self._LOGGER.warning("<Unexpected sender address/port> %s (IGNORING)", pkg_origin_address_port)
+                else:
+                    if self._connected_to_other_client and self._connecting:
+                        self._connecting = False
+                    self._handle_received_pkg(pkg, pkg_origin_address_port)
+            except Exception as e:
+                self._LOGGER.error(f"<ERROR> {e}")
+                self.in_thread_error_queue.put(e)
+                self.disconnect()
+                
 
     def _end_connection(self) -> None:
         """This function ends the connection"""
@@ -307,6 +335,10 @@ class PunchlineClient(Punchline):
     def is_connected(self) -> bool:
         """returns if you are connected to another client"""
         return self._connected_to_other_client and not self._connecting
+
+    def is_connecting(self) -> bool:
+        """returns if you are still connecting to other client"""
+        return self._connecting
 
     def get_send_progress(self) -> int:
         """counts down to 0 to show progress of current package being sent"""

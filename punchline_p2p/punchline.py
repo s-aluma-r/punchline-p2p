@@ -7,6 +7,7 @@ import hashlib
 import threading
 import random as r
 import logging
+from queue import Queue
 from typing import Optional, List, Dict, Tuple
 
 """
@@ -55,6 +56,7 @@ class Punchline(ABC):
     _ack_hash_list: List[bytes] = []
     _ack_hash_list_lock: threading.Lock = threading.Lock()
     _cancel_send_pkg: bool = False
+    in_thread_error_queue: Queue = Queue()  # for errors in threads
 
     # there to differentiate single packages with same content sent right after each other from a resend (only needed for dat or jdt with sequence_id=0)
     _rolling_id: int = 0  # rotating id (0-256) to make 2 packages with same data different
@@ -80,7 +82,7 @@ class Punchline(ABC):
     # _NO_ACK_PKG_TYPES = [_PackageType.FAF, _PackageType.JFF, _PackageType.KAL, _PackageType.ACK]
     _ACK_RET_PKG_TYPES: List[_PackageType] = [_PackageType.DAT, _PackageType.JDT, _PackageType.CON, _PackageType.END]  # there packages require an ack to be returned
 
-    def __init__(self, logging_level: int = logging.NOTSET):
+    def __init__(self, logging_level: int = logging.CRITICAL):
         """Constructor"""
         self._HEADER_SIZE = struct.calcsize(self._HEADER)
         self._MAX_PKG_DATA_SIZE = self._BUFFER_SIZE-self._HEADER_SIZE
@@ -211,6 +213,10 @@ class Punchline(ABC):
     def get_max_pkg_data_size(self) -> int:
         """Returns the maximum binary size for a single package"""
         return self._MAX_PKG_DATA_SIZE
+
+    def get_logger(self):
+        """Returns punchlines logger"""
+        return self._LOGGER
 
 class VersionError(Exception):
     """A generic Exception to signal a version conflict between server and client or 2 clients"""
